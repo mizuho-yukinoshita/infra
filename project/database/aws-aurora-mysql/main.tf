@@ -39,12 +39,36 @@ resource "aws_rds_cluster_parameter_group" "cluster_parameter_group" {
   family      = "aurora-mysql8.0"
   description = "Cluster parameter group for ${var.env} aurora 8.0"
 
-  parameter { apply_method = "immediate", name = "character_set_client", value = "utf8" }
-  parameter { apply_method = "immediate", name = "character_set_connection", value = "utf8" }
-  parameter { apply_method = "immediate", name = "character_set_database", value = "utf8" }
-  parameter { apply_method = "immediate", name = "character_set_filesystem", value = "utf8" }
-  parameter { apply_method = "immediate", name = "character_set_results", value = "utf8" }
-  parameter { apply_method = "immediate", name = "character_set_server", value = "utf8" }
+  parameter {
+    apply_method = "immediate"
+    name = "character_set_client"
+    value = "utf8"
+  }
+  parameter {
+    apply_method = "immediate"
+    name = "character_set_connection"
+    value = "utf8"
+  }
+  parameter {
+    apply_method = "immediate"
+    name = "character_set_database"
+    value = "utf8"
+  }
+  parameter {
+    apply_method = "immediate"
+    name = "character_set_filesystem"
+    value = "utf8"
+  }
+  parameter {
+    apply_method = "immediate"
+    name = "character_set_results"
+    value = "utf8"
+  }
+  parameter {
+    apply_method = "immediate"
+    name = "character_set_server"
+    value = "utf8"
+  }
 }
 
 # ---------------------------------------------
