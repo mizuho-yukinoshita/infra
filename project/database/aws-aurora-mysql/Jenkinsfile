@@ -1,0 +1,73 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'ENV', choices: ['dev', 'stg', 'prd'], description: 'Deploy Environment')
+
+        string(name: 'AWS_REGION', defaultValue: 'ap-northeast-1', description: 'AWS Region')
+        string(name: 'AWS_PROFILE', defaultValue: 'default', description: 'AWS CLI Profile Name')
+        string(name: 'BACKEND_STACK_NAME', defaultValue: 'terraform-backend', description: 'CloudFormation Stack Name for Backend')
+    }
+
+    environment {
+        SELF_DIR = 'project/database/aws-aurora-mysql'
+        BACKEND_CONFIG_FILE = "${WORKSPACE}/config/backend.hcl"
+    }
+
+    stages {
+        stage('Prepare Backend Config') {
+            steps {
+                script {
+                    // 1. 既存のCFnスタックからS3バケット名を動的に取得
+                    def bucketName = sh(
+                        script: "aws cloudformation describe-stacks --profile ${params.AWS_PROFILE} --region ${params.AWS_REGION} --stack-name ${params.BACKEND_STACK_NAME} --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text",
+                        returnStdout: true
+                    ).trim()
+
+                    // 2. Terraform用のbackend.hclを生成
+                    def backendContent = """\
+                        bucket       = "${bucketName}"
+                        region       = "${params.AWS_REGION}"
+                        use_lockfile = true
+                        encrypt      = true
+                    """.stripIndent()
+
+                    writeFile file: env.BACKEND_CONFIG_FILE, text: backendContent
+
+                    echo "Generated backend config with bucket: ${bucketName}"
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh "terraform init -backend-config=${env.BACKEND_CONFIG_FILE}"
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh "terraform plan -var-file=${params.ENV}.tfvars -out=tfplan"
+                }
+            }
+        }
+
+        stage('Approval') {
+            steps {
+                input message: "Terraform Planの内容を確認しましたか？Applyを実行してよろしいですか？",
+                      ok: "Applyを実行する"
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh "terraform apply -auto-approve tfplan"
+                }
+            }
+        }
+    }
+}
