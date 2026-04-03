@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Terraform Backend Using S3 with Locking'
+
+Parameters:
+  DevOpsIAMArn:
+    Type: String
+    Description: "The Arn of the IAM User/Role for DevOps"
+
+Resources:
+  StateLockBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  StateLockBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StateLockBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RestrictToIAM
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt StateLockBucket.Arn
+              - !Sub '${StateLockBucket.Arn}/*'
+            Condition:
+              ArnNotLike:
+                'aws:PrincipalArn':
+                  - !Ref DevOpsIAMArn
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+          - Sid: EnforceHTTPS
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt StateLockBucket.Arn
+              - !Sub '${StateLockBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+Outputs:
+  BucketName:
+    Value: !Ref StateLockBucket

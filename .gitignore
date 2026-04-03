@@ -42,4 +42,6 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+/config/*
 
+!**/.gitkeep
