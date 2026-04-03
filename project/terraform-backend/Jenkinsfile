@@ -1,0 +1,70 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'AWS_REGION', defaultValue: 'ap-northeast-1', description: 'AWS Region')
+        string(name: 'AWS_PROFILE', defaultValue: 'default', description: 'AWS CLI Profile Name')
+        string(name: 'STACK_NAME', defaultValue: 'terraform-backend', description: 'CloudFormation Stack Name')
+    }
+
+    environment {
+        SELF_DIR = 'project/terraform-backend'
+        BACKEND_TEMPLATE_FILE = "${SELF_DIR}/cfn-terraform-backend.yaml"
+        BACKEND_CONFIG_FILE = 'config/backend.hcl'
+    }
+
+    stages {
+        stage('Get DevOps IAM') {
+            steps {
+                script {
+                    def iamArn = sh(script: "aws sts get-caller-identity --profile ${params.AWS_PROFILE} --query 'Arn' --output text", returnStdout: true).trim()
+
+                    // convert if assumed-role returned
+                    env.DEVOPS_IAM_ARN = iamArn.replaceAll('sts::', 'iam::')
+                                               .replaceAll('assumed-role/', 'role/')
+                                               .split('/')[0..1].join('/')
+
+                    echo "Identified Principal ARN: ${env.DEVOPS_IAM_ARN}"
+                }
+            }
+        }
+
+        stage('Deploy CloudFormation') {
+            steps {
+                sh """
+                    aws cloudformation deploy \
+                        --profile ${params.AWS_PROFILE} \
+                        --template-file ${env.BACKEND_TEMPLATE_FILE} \
+                        --stack-name ${params.STACK_NAME} \
+                        --parameter-overrides \
+                            DevOpsIAMArn=${env.DEVOPS_IAM_ARN} \
+                            BucketName=${params.BUCKET_NAME} \
+                        --no-fail-on-empty-changeset \
+                        --region ${params.AWS_REGION}
+                """
+            }
+        }
+
+        stage('Write Terraform Backend Config') {
+            steps {
+                script {
+                    def bucketName = sh(
+                        script: "aws cloudformation describe-stacks --profile ${params.AWS_PROFILE} --region ${params.AWS_REGION} --stack-name ${params.STACK_NAME} --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text",
+                        returnStdout: true
+                    ).trim()
+
+                    def backendContent = """\
+                        bucket       = "${bucketName}"
+                        region       = "${params.AWS_REGION}"
+                        use_lockfile = true
+                        encrypt      = true
+                    """.stripIndent()
+
+                    writeFile file: env.BACKEND_CONFIG_FILE, text: backendContent
+
+                    echo "Generated ${env.BACKEND_CONFIG_FILE} with bucket: ${bucketName}"
+                }
+            }
+        }
+    }
+}
