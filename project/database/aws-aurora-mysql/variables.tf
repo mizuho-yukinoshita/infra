@@ -4,7 +4,7 @@ variable "system_name" {
 }
 
 variable "env" {
-  description = "環境名 (例: stg, prd)"
+  description = "環境名 (例: dev, stg, prd)"
   type        = string
 }
 
@@ -25,13 +25,15 @@ variable "security_group_ids" {
 }
 
 variable "cluster_parameter_group_name" {
-  description = "クラスターパラメータグループ名"
-  type        = string
+  description = "（既存を利用する場合）クラスターパラメータグループ名"
+  type = string
+  default = ""
 }
 
-variable "instance_parameter_group_name" {
-  description = "DBパラメータグループ名"
-  type        = string
+variable "db_parameter_group_name" {
+  description = "（既存を利用する場合）インスタンスパラメータグループ名"
+  type = string
+  default = ""
 }
 
 variable "writer_instance_class" {
@@ -62,29 +64,27 @@ variable "serverless_max_capacity" {
   default     = 0
 }
 
-variable "instance_parameters" {
+variable "cluster_parameters" {
+  description = "クラスターパラメータのリスト"
+  type = list(object({
+    name         = string
+    value        = string
+    apply_method = string
+  }))
+  default = []
+}
+
+variable "db_parameters" {
   description = "インスタンスパラメータのリスト"
   type = list(object({
     name         = string
     value        = string
     apply_method = string
   }))
-  default = [
-    { apply_method = "immediate", name = "eq_range_index_dive_limit", value = "1000" },
-    { apply_method = "immediate", name = "innodb_lock_wait_timeout", value = "15" },
-    { apply_method = "immediate", name = "log_queries_not_using_indexes", value = "0" },
-    { apply_method = "immediate", name = "log_slow_admin_statements", value = "1" },
-    { apply_method = "immediate", name = "log_slow_replica_statements", value = "1" },
-    { apply_method = "immediate", name = "long_query_time", value = "1" },
-    { apply_method = "immediate", name = "max_connect_errors", value = "999999999" },
-    { apply_method = "immediate", name = "range_optimizer_max_mem_size", value = "16777216" },
-    { apply_method = "immediate", name = "slow_query_log", value = "1" },
-    { apply_method = "immediate", name = "wait_timeout", value = "60" },
-    { apply_method = "pending-reboot", name = "explicit_defaults_for_timestamp", value = "0" }
-  ]
+  default = []
 }
 
-variable "common_tags" {
+variable "default_tags" {
   description = "リソースに付与する共通タグ"
   type        = map(string)
   default     = {}

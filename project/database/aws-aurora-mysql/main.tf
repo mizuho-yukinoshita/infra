@@ -13,16 +13,32 @@ terraform {
   }
 }
 
+provider "aws" {
+  default_tags {
+    tags = merge(
+      var.default_tags,
+      {
+        TerraformKey = "database/aws-aurora-mysql"
+        SystemName   = var.system_name
+        Environment  = var.env
+        ManagedBy    = "Terraform"
+      }
+    )
+  }
+}
+
 # ---------------------------------------------
-# 1. インスタンスパラメータグループ
+# インスタンスパラメータグループ
 # ---------------------------------------------
-resource "aws_db_parameter_group" "instance_parameter_group" {
-  name        = var.instance_parameter_group_name
+resource "aws_db_parameter_group" "main" {
+  count = var.db_parameter_group_name == "" ? 1 : 0
+
+  name_prefix = "${var.system_name}-${var.env}-aurora-db-parameter-group"
   family      = "aurora-mysql8.0"
-  description = "Parameter group for ${var.env} aurora 8.0"
+  description = "${var.system_name} ${var.env} Aurora DB Parameter Group"
 
   dynamic "parameter" {
-    for_each = var.instance_parameters
+    for_each = var.db_parameters
     content {
       name         = parameter.value.name
       value        = parameter.value.value
@@ -32,12 +48,14 @@ resource "aws_db_parameter_group" "instance_parameter_group" {
 }
 
 # ---------------------------------------------
-# 2. クラスターパラメータグループ
+# クラスターパラメータグループ
 # ---------------------------------------------
-resource "aws_rds_cluster_parameter_group" "cluster_parameter_group" {
-  name        = var.cluster_parameter_group_name
+resource "aws_rds_cluster_parameter_group" "main" {
+  count = var.cluster_parameter_group_name == "" ? 1 : 0
+
+  name_prefix = "${var.system_name}-${var.env}-aurora-cluster-parameter-group"
   family      = "aurora-mysql8.0"
-  description = "Cluster parameter group for ${var.env} aurora 8.0"
+  description = "${var.system_name} ${var.env} Aurora Cluster Parameter Group"
 
   parameter {
     apply_method = "immediate"
@@ -69,10 +87,19 @@ resource "aws_rds_cluster_parameter_group" "cluster_parameter_group" {
     name = "character_set_server"
     value = "utf8"
   }
+
+  dynamic "parameter" {
+    for_each = var.cluster_parameters
+    content {
+      name         = parameter.value.name
+      value        = parameter.value.value
+      apply_method = parameter.value.apply_method
+    }
+  }
 }
 
 # ---------------------------------------------
-# 3. Aurora クラスター
+# Aurora クラスター
 # ---------------------------------------------
 resource "aws_rds_cluster" "main" {
   cluster_identifier              = "${var.system_name}-${var.env}-aurora-cluster"
@@ -83,7 +110,7 @@ resource "aws_rds_cluster" "main" {
 
   manage_master_user_password     = var.manage_master_password
 
-  db_cluster_parameter_group_name = aws_rds_cluster_parameter_group.cluster_parameter_group.name
+  db_cluster_parameter_group_name = var.cluster_parameter_group_name == "" ? aws_rds_cluster_parameter_group.main[0].name : var.cluster_parameter_group_name
   db_subnet_group_name            = var.subnet_group_name
   vpc_security_group_ids          = var.security_group_ids
 
@@ -97,7 +124,6 @@ resource "aws_rds_cluster" "main" {
   enabled_cloudwatch_logs_exports = ["slowquery"]
 
   tags = merge(
-    var.common_tags,
     var.cluster_tags,
     { Name = "${var.system_name}-${var.env}-aurora-main-cluster" }
   )
@@ -109,7 +135,6 @@ resource "aws_rds_cluster" "main" {
     ]
   }
 
-  # 必要な場合のみServerless設定を生成
   dynamic "serverlessv2_scaling_configuration" {
     for_each = var.serverless_max_capacity > 0 ? [1] : []
     content {
@@ -120,40 +145,42 @@ resource "aws_rds_cluster" "main" {
 }
 
 # ---------------------------------------------
-# 4. Aurora インスタンス
+# Aurora インスタンス
 # ---------------------------------------------
 
-# ▼ Writer (マスターインスタンス：常に1台作成)
+# ▼ Writer
 resource "aws_rds_cluster_instance" "writer" {
-  identifier              = "${var.system_name}-${var.env}-aurora-writer"
-  cluster_identifier      = aws_rds_cluster.main.id
-  engine                  = aws_rds_cluster.main.engine
-  engine_version          = aws_rds_cluster.main.engine_version
+  identifier                 = "${var.system_name}-${var.env}-aurora-writer"
+  cluster_identifier         = aws_rds_cluster.main.id
+  engine                     = aws_rds_cluster.main.engine
+  engine_version             = aws_rds_cluster.main.engine_version
+  auto_minor_version_upgrade = false
+
   instance_class          = var.writer_instance_class
-  db_parameter_group_name = aws_db_parameter_group.instance_parameter_group.name
+  db_parameter_group_name = var.db_parameter_group_name == "" ? aws_db_parameter_group.main[0].name : var.db_parameter_group_name
   db_subnet_group_name    = var.subnet_group_name
 
   tags = merge(
-    var.common_tags,
     var.writer_tags,
     { Name = "${var.system_name}-${var.env}-aurora-writer" }
   )
 }
 
-# ▼ Reader (リードレプリカ)
+# ▼ Reader
 resource "aws_rds_cluster_instance" "reader" {
   count                   = var.reader_count
 
-  identifier              = "${var.system_name}-${var.env}-aurora-reader${count.index + 1}"
-  cluster_identifier      = aws_rds_cluster.main.id
-  engine                  = aws_rds_cluster.main.engine
-  engine_version          = aws_rds_cluster.main.engine_version
+  identifier                 = "${var.system_name}-${var.env}-aurora-reader${count.index + 1}"
+  cluster_identifier         = aws_rds_cluster.main.id
+  engine                     = aws_rds_cluster.main.engine
+  engine_version             = aws_rds_cluster.main.engine_version
+  auto_minor_version_upgrade = false
+
   instance_class          = var.reader_instance_class
-  db_parameter_group_name = aws_db_parameter_group.instance_parameter_group.name
+  db_parameter_group_name = var.db_parameter_group_name == "" ? aws_db_parameter_group.main[0].name : var.db_parameter_group_name
   db_subnet_group_name    = var.subnet_group_name
 
   tags = merge(
-    var.common_tags,
     var.reader_tags,
     { Name = "${var.system_name}-${var.env}-aurora-reader${count.index + 1}" }
   )
