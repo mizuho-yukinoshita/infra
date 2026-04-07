@@ -125,7 +125,7 @@ resource "aws_rds_cluster" "main" {
 
   tags = merge(
     var.cluster_tags,
-    { Name = "${var.system_name}-${var.env}-aurora-main-cluster" }
+    { Name = "${var.system_name}-${var.env}-aurora-cluster" }
   )
 
   lifecycle {
@@ -150,7 +150,7 @@ resource "aws_rds_cluster" "main" {
 
 # ▼ Writer
 resource "aws_rds_cluster_instance" "writer" {
-  identifier                 = "${var.system_name}-${var.env}-aurora-writer"
+  identifier_prefix          = "${var.system_name}-${var.env}-aurora-instance"
   cluster_identifier         = aws_rds_cluster.main.id
   engine                     = aws_rds_cluster.main.engine
   engine_version             = aws_rds_cluster.main.engine_version
@@ -162,7 +162,7 @@ resource "aws_rds_cluster_instance" "writer" {
 
   tags = merge(
     var.writer_tags,
-    { Name = "${var.system_name}-${var.env}-aurora-writer" }
+    { Name = "${var.system_name}-${var.env}-aurora-instance" }
   )
 }
 
@@ -170,7 +170,7 @@ resource "aws_rds_cluster_instance" "writer" {
 resource "aws_rds_cluster_instance" "reader" {
   count                   = var.reader_count
 
-  identifier                 = "${var.system_name}-${var.env}-aurora-reader${count.index + 1}"
+  identifier_prefix          = "${var.system_name}-${var.env}-aurora-instance"
   cluster_identifier         = aws_rds_cluster.main.id
   engine                     = aws_rds_cluster.main.engine
   engine_version             = aws_rds_cluster.main.engine_version
@@ -182,6 +182,6 @@ resource "aws_rds_cluster_instance" "reader" {
 
   tags = merge(
     var.reader_tags,
-    { Name = "${var.system_name}-${var.env}-aurora-reader${count.index + 1}" }
+    { Name = "${var.system_name}-${var.env}-aurora-instance" }
   )
 }
