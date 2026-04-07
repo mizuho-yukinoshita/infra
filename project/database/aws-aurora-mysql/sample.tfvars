@@ -6,17 +6,17 @@ manage_master_password = false
 
 subnet_group_name     = ""
 security_group_ids    = ["sg-xxxxxxxx"]
+storage_encrypted               = false
 
 # インスタンスクラス
-writer_instance_class = "db.t3.medium"
+writer_instance_class = "db.serverless"
 
 reader_instance_class = "db.serverless"
 reader_count          = 0
 
 # Serverless v2のキャパシティ
 serverless_min_capacity = 0
-serverless_max_capacity = 0
-
+serverless_max_capacity = 2
 
 # パラメータ
 cluster_parameter_group_name = ""
@@ -36,6 +36,19 @@ db_parameters = [
   { apply_method = "immediate", name = "wait_timeout", value = "60" },
   { apply_method = "pending-reboot", name = "explicit_defaults_for_timestamp", value = "0" }
 ]
+
+# Backup
+backup_retention_period         = 7
+preferred_backup_window         = "16:41-17:11"
+preferred_maintenance_window    = "sun:20:01-sun:20:31"
+delete_automated_backups        = true
+skip_final_snapshot             = true
+copy_tags_to_snapshot           = true
+
+# Monitoring
+performance_insights_enabled = false
+performance_insights_retention_period = 7
+enabled_cloudwatch_logs_exports = ["slowquery"]
 
 # タグ
 default_tags = {}

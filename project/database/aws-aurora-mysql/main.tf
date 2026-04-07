@@ -33,7 +33,7 @@ provider "aws" {
 resource "aws_db_parameter_group" "main" {
   count = var.db_parameter_group_name == "" ? 1 : 0
 
-  name_prefix = "${var.system_name}-${var.env}-aurora-db-parameter-group"
+  name_prefix = "${var.system_name}-${var.env}-aurora-db-parameter-group-"
   family      = "aurora-mysql8.0"
   description = "${var.system_name} ${var.env} Aurora DB Parameter Group"
 
@@ -53,7 +53,7 @@ resource "aws_db_parameter_group" "main" {
 resource "aws_rds_cluster_parameter_group" "main" {
   count = var.cluster_parameter_group_name == "" ? 1 : 0
 
-  name_prefix = "${var.system_name}-${var.env}-aurora-cluster-parameter-group"
+  name_prefix = "${var.system_name}-${var.env}-aurora-cluster-parameter-group-"
   family      = "aurora-mysql8.0"
   description = "${var.system_name} ${var.env} Aurora Cluster Parameter Group"
 
@@ -107,6 +107,7 @@ resource "aws_rds_cluster" "main" {
   engine_version                  = "8.0.mysql_aurora.3.10.2"
   master_username                 = "root"
   port                            = 3306
+  storage_encrypted               = var.storage_encrypted
 
   manage_master_user_password     = var.manage_master_password
 
@@ -114,14 +115,14 @@ resource "aws_rds_cluster" "main" {
   db_subnet_group_name            = var.subnet_group_name
   vpc_security_group_ids          = var.security_group_ids
 
-  backup_retention_period         = 7
-  preferred_backup_window         = "16:41-17:11"
-  preferred_maintenance_window    = "sun:20:01-sun:20:31"
-  delete_automated_backups        = true
-  skip_final_snapshot             = true
-  storage_encrypted               = false
+  enabled_cloudwatch_logs_exports = var.enabled_cloudwatch_logs_exports
 
-  enabled_cloudwatch_logs_exports = ["slowquery"]
+  backup_retention_period         = var.backup_retention_period
+  preferred_backup_window         = var.preferred_backup_window
+  preferred_maintenance_window    = var.preferred_maintenance_window
+  delete_automated_backups        = var.delete_automated_backups
+  skip_final_snapshot             = var.skip_final_snapshot
+  copy_tags_to_snapshot           = var.copy_tags_to_snapshot
 
   tags = merge(
     var.cluster_tags,
@@ -150,7 +151,7 @@ resource "aws_rds_cluster" "main" {
 
 # ▼ Writer
 resource "aws_rds_cluster_instance" "writer" {
-  identifier_prefix          = "${var.system_name}-${var.env}-aurora-instance"
+  identifier_prefix          = "${var.system_name}-${var.env}-aurora-instance-"
   cluster_identifier         = aws_rds_cluster.main.id
   engine                     = aws_rds_cluster.main.engine
   engine_version             = aws_rds_cluster.main.engine_version
@@ -160,17 +161,26 @@ resource "aws_rds_cluster_instance" "writer" {
   db_parameter_group_name = var.db_parameter_group_name == "" ? aws_db_parameter_group.main[0].name : var.db_parameter_group_name
   db_subnet_group_name    = var.subnet_group_name
 
+  performance_insights_enabled          = var.performance_insights_enabled
+  performance_insights_retention_period = var.performance_insights_enabled ? var.performance_insights_retention_period : null
+
+  copy_tags_to_snapshot                 = var.copy_tags_to_snapshot
+
   tags = merge(
     var.writer_tags,
     { Name = "${var.system_name}-${var.env}-aurora-instance" }
   )
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ▼ Reader
 resource "aws_rds_cluster_instance" "reader" {
   count                   = var.reader_count
 
-  identifier_prefix          = "${var.system_name}-${var.env}-aurora-instance"
+  identifier_prefix          = "${var.system_name}-${var.env}-aurora-instance-"
   cluster_identifier         = aws_rds_cluster.main.id
   engine                     = aws_rds_cluster.main.engine
   engine_version             = aws_rds_cluster.main.engine_version
@@ -179,6 +189,11 @@ resource "aws_rds_cluster_instance" "reader" {
   instance_class          = var.reader_instance_class
   db_parameter_group_name = var.db_parameter_group_name == "" ? aws_db_parameter_group.main[0].name : var.db_parameter_group_name
   db_subnet_group_name    = var.subnet_group_name
+
+  performance_insights_enabled          = var.performance_insights_enabled
+  performance_insights_retention_period = var.performance_insights_enabled ? var.performance_insights_retention_period : null
+
+  copy_tags_to_snapshot                 = var.copy_tags_to_snapshot
 
   tags = merge(
     var.reader_tags,

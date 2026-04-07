@@ -8,12 +8,6 @@ variable "env" {
   type        = string
 }
 
-variable "manage_master_password" {
-  description = "AWS Secrets Managerによるパスワード自動管理を有効にするか"
-  type        = bool
-  default     = false
-}
-
 variable "subnet_group_name" {
   description = "DBサブネットグループ名"
   type        = string
@@ -22,6 +16,72 @@ variable "subnet_group_name" {
 variable "security_group_ids" {
   description = "適用するセキュリティグループIDのリスト"
   type        = list(string)
+}
+
+variable "manage_master_password" {
+  description = "AWS Secrets Managerによるパスワード自動管理を有効にするか"
+  type        = bool
+  default     = false
+}
+
+variable "storage_encrypted" {
+  description = "ストレージの暗号化を有効にするか"
+  type        = bool
+  default     = true
+}
+
+variable "backup_retention_period" {
+  description = "自動バックアップの保持期間（日）"
+  type        = number
+  default     = 7
+}
+
+variable "preferred_backup_window" {
+  description = "自動バックアップを実行する時間帯（UTC）"
+  type        = string
+  default     = "19:30-20:59"
+}
+
+variable "preferred_maintenance_window" {
+  description = "メンテナンスを実行する時間帯（UTC）"
+  type        = string
+  default     = "sat:20:30-sat:20:59"
+}
+
+variable "delete_automated_backups" {
+  description = "クラスター削除時に自動バックアップも削除するか"
+  type        = bool
+  default     = true
+}
+
+variable "skip_final_snapshot" {
+  description = "クラスター削除時に最終スナップショットの取得をスキップするか"
+  type        = bool
+  default     = true
+}
+
+variable "copy_tags_to_snapshot" {
+  description = "スナップショットにタグをコピーするか"
+  type        = bool
+  default     = true
+}
+
+variable "enabled_cloudwatch_logs_exports" {
+  description = "CloudWatchへエクスポートするログの種類"
+  type        = list(string)
+  default     = []
+}
+
+variable "performance_insights_enabled" {
+  description = "Performance Insightsを有効にするか"
+  type        = bool
+  default     = false
+}
+
+variable "performance_insights_retention_period" {
+  description = "Performance Insightsのデータ保持期間（日）"
+  type        = number
+  default     = 7
 }
 
 variable "cluster_parameter_group_name" {
