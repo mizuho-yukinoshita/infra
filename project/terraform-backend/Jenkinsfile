@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        ansiColor('xterm')
+    }
+
     parameters {
         string(name: 'AWS_REGION', defaultValue: 'ap-northeast-1', description: 'AWS Region')
         string(name: 'AWS_PROFILE', defaultValue: 'default', description: 'AWS CLI Profile Name')
