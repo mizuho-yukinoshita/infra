@@ -50,6 +50,12 @@ performance_insights_enabled = false
 performance_insights_retention_period = 7
 enabled_cloudwatch_logs_exports = ["slowquery"]
 
+# DNS
+route53_zone_name = "aws.internal"
+is_route53_zone_private = true
+# レコード名上書き可能。デフォルト: ${system_name}-${env}-db
+# route53_record_name = ""
+
 # タグ
 default_tags = {}
 

@@ -31,7 +31,7 @@ provider "aws" {
 # インスタンスパラメータグループ
 # ---------------------------------------------
 resource "aws_db_parameter_group" "main" {
-  count = var.db_parameter_group_name == "" ? 1 : 0
+  count = var.db_parameter_group_name == null ? 1 : 0
 
   name_prefix = "${var.system_name}-${var.env}-aurora-db-parameter-group-"
   family      = "aurora-mysql8.0"
@@ -51,7 +51,7 @@ resource "aws_db_parameter_group" "main" {
 # クラスターパラメータグループ
 # ---------------------------------------------
 resource "aws_rds_cluster_parameter_group" "main" {
-  count = var.cluster_parameter_group_name == "" ? 1 : 0
+  count = var.cluster_parameter_group_name == null ? 1 : 0
 
   name_prefix = "${var.system_name}-${var.env}-aurora-cluster-parameter-group-"
   family      = "aurora-mysql8.0"
@@ -201,4 +201,46 @@ resource "aws_rds_cluster_instance" "reader" {
     var.reader_tags,
     { Name = "${var.system_name}-${var.env}-aurora-instance" }
   )
+}
+
+# ---------------------------------------------
+# Route 53 (既存のホストゾーンの参照)
+# ---------------------------------------------
+data "aws_route53_zone" "main" {
+  count        = var.route53_zone_name != null ? 1 : 0
+
+  name         = var.route53_zone_name
+  private_zone = var.is_route53_zone_private
+}
+
+# ---------------------------------------------
+# Write/Read エンドポイントのレコード
+# ---------------------------------------------
+resource "aws_route53_record" "cluster_endpoint" {
+  count   = var.route53_zone_name != null ? 1 : 0
+
+  zone_id = data.aws_route53_zone.main.zone_id
+
+  name    = var.route53_record_name != null ? "${var.route53_record_name}.${data.aws_route53_zone.main.name}" : "${var.system_name}-${var.env}-db.${data.aws_route53_zone.main.name}"
+
+  type    = "CNAME"
+  ttl     = "300"
+
+  records = [aws_rds_cluster.main.endpoint]
+}
+
+# ---------------------------------------------
+# ReadOnly エンドポイントのレコード
+# ---------------------------------------------
+resource "aws_route53_record" "cluster_ro_endpoint" {
+  count   = var.route53_zone_name != null ? 1 : 0
+
+  zone_id = data.aws_route53_zone.main.zone_id
+
+  name    = var.route53_record_name != null ? "${var.route53_record_name}-ro.${data.aws_route53_zone.main.name}" : "${var.system_name}-${var.env}-db-ro.${data.aws_route53_zone.main.name}"
+
+  type    = "CNAME"
+  ttl     = "300"
+
+  records = [aws_rds_cluster.main.reader_endpoint]
 }

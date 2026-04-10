@@ -11,6 +11,7 @@ variable "env" {
 variable "subnet_group_name" {
   description = "DBサブネットグループ名"
   type        = string
+  default     = null
 }
 
 variable "security_group_ids" {
@@ -87,13 +88,13 @@ variable "performance_insights_retention_period" {
 variable "cluster_parameter_group_name" {
   description = "（既存を利用する場合）クラスターパラメータグループ名"
   type = string
-  default = ""
+  default = null
 }
 
 variable "db_parameter_group_name" {
   description = "（既存を利用する場合）インスタンスパラメータグループ名"
   type = string
-  default = ""
+  default = null
 }
 
 variable "writer_instance_class" {
@@ -104,6 +105,7 @@ variable "writer_instance_class" {
 variable "reader_instance_class" {
   description = "Reader（リードレプリカ）のインスタンスクラス"
   type        = string
+  default     = null
 }
 
 variable "reader_count" {
@@ -142,6 +144,24 @@ variable "db_parameters" {
     apply_method = string
   }))
   default = []
+}
+
+variable "route53_zone_name" {
+  description = "クラスターエンドポイントのレコードを追加するRoute 53のホストゾーン名"
+  type        = string
+  default     = null
+}
+
+variable "is_route53_zone_private" {
+  description = "Route 53のホストゾーンがプライベート（VPC内のみ）かどうか"
+  type        = bool
+  default     = true
+}
+
+variable "route53_record_name" {
+  description = "Route 53のレコード名。指定しない場合は\${system_name}-\${env}-db"
+  type        = string
+  default     = null
 }
 
 variable "default_tags" {
