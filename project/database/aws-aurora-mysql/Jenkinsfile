@@ -6,6 +6,7 @@ pipeline {
     }
 
     parameters {
+        choice(name: 'ACTION', choices: ['apply', 'destroy'], description: 'Action')
         choice(name: 'ENV', choices: ['dev', 'stg', 'prd'], description: 'Deploy Environment')
 
         string(name: 'AWS_REGION', defaultValue: 'ap-northeast-1', description: 'AWS Region')
@@ -52,6 +53,9 @@ pipeline {
         }
 
         stage('Terraform Plan') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
             steps {
                 dir("${env.SELF_DIR}") {
                     sh "terraform plan -var-file=${params.ENV}.tfvars -out=tfplan"
@@ -59,14 +63,25 @@ pipeline {
             }
         }
 
-        stage('Approval') {
+        stage('Terraform Plan Destroy') {
+            when {
+                expression { params.ACTION == 'destroy' }
+            }
             steps {
-                input message: "Terraform Planの内容を確認しましたか？Applyを実行してよろしいですか？",
-                      ok: "Applyを実行する"
+                dir("${env.SELF_DIR}") {
+                    sh "terraform plan -destroy -var-file=${params.ENV}.tfvars -out=tfplan"
+                }
             }
         }
 
-        stage('Terraform Apply') {
+        stage('Approval') {
+            steps {
+                input message: "Terraform Planの内容（${params.ACTION}）を確認しましたか？実行してよろしいですか？",
+                      ok: "実行する"
+            }
+        }
+
+        stage('Terraform Execution') {
             steps {
                 dir("${env.SELF_DIR}") {
                     sh "terraform apply -auto-approve tfplan"
