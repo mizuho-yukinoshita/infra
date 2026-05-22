@@ -1,0 +1,88 @@
+pipeline {
+    agent any
+
+    options {
+        ansiColor('xterm')
+    }
+
+    parameters {
+        choice(name: 'ACTION', choices: ['apply', 'destroy'], description: 'Action')
+        choice(name: 'ENV', choices: ['dev', 'stg', 'prd'], description: 'Deploy Environment')
+
+        string(name: 'AWS_REGION', defaultValue: 'ap-northeast-1', description: 'AWS Region')
+        string(name: 'AWS_PROFILE', defaultValue: 'default', description: 'AWS CLI Profile Name')
+        string(name: 'BACKEND_STACK_NAME', defaultValue: 'terraform-backend', description: 'CloudFormation Stack Name for Backend')
+    }
+
+    environment {
+        SELF_DIR = 'project/database/aws-elasticache-memcached'
+        BACKEND_CONFIG_FILE = "${WORKSPACE}/config/backend.hcl"
+    }
+
+    stages {
+        stage('Prepare Backend Config') {
+            steps {
+                script {
+                    def bucketName = sh(
+                        script: "aws cloudformation describe-stacks --profile ${params.AWS_PROFILE} --region ${params.AWS_REGION} --stack-name ${params.BACKEND_STACK_NAME} --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text",
+                        returnStdout: true
+                    ).trim()
+
+                    def backendContent = """\
+                        bucket       = "${bucketName}"
+                        region       = "${params.AWS_REGION}"
+                        use_lockfile = true
+                        encrypt      = true
+                    """.stripIndent()
+
+                    writeFile file: env.BACKEND_CONFIG_FILE, text: backendContent
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh "terraform init -backend-config=${env.BACKEND_CONFIG_FILE}"
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh "terraform plan -var-file=${params.ENV}.tfvars -out=tfplan"
+                }
+            }
+        }
+
+        stage('Terraform Plan Destroy') {
+            when {
+                expression { params.ACTION == 'destroy' }
+            }
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh "terraform plan -destroy -var-file=${params.ENV}.tfvars -out=tfplan"
+                }
+            }
+        }
+
+        stage('Approval') {
+            steps {
+                input message: "Terraform Planの内容（${params.ACTION}）を確認しましたか？実行してよろしいですか？",
+                      ok: "実行する"
+            }
+        }
+
+        stage('Terraform Execution') {
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh "terraform apply -auto-approve tfplan"
+                }
+            }
+        }
+    }
+}
