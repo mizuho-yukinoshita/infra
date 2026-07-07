@@ -1,14 +1,29 @@
+# =============================================================================
+# Terraform Backend (S3 + Lockfile)
+#
+# ロックアウトからの復旧手順:
+#   バケットポリシーの Deny (RestrictToIAM) は AllowedIamArns に含まれない
+#   プリンシパルのアクセスを拒否するが、アカウントの root ユーザー
+#   (arn:aws:iam::<account-id>:root) は常に除外している。
+#   AllowedIamArns の指定ミス等で全 IAM ユーザー/ロールが締め出された場合は、
+#   root ユーザーでサインインして次のいずれかを実施する:
+#     1. バケットポリシーを削除して復旧する:
+#        aws s3api delete-bucket-policy --bucket <bucket-name>
+#     2. AllowedIamArns を修正して本スタックを更新する。
+# =============================================================================
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Terraform Backend Using S3 with Locking'
 
 Parameters:
-  DevOpsIAMArn:
-    Type: String
-    Description: "The Arn of the IAM User/Role for DevOps"
+  AllowedIamArns:
+    Type: CommaDelimitedList
+    Description: "Comma-delimited list of IAM principal ARNs allowed to access the state bucket (wildcards allowed, e.g. arn:aws:iam::123456789012:role/ci-*)"
 
 Resources:
   StateLockBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       VersioningConfiguration:
         Status: Enabled
@@ -21,6 +36,12 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireNoncurrentStateVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
 
   StateLockBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -38,9 +59,11 @@ Resources:
               - !Sub '${StateLockBucket.Arn}/*'
             Condition:
               ArnNotLike:
-                'aws:PrincipalArn':
-                  - !Ref DevOpsIAMArn
-                  - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+                'aws:PrincipalArn': !Split
+                  - ','
+                  - !Sub
+                    - '${JoinedArns},arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+                    - JoinedArns: !Join [ ',', !Ref AllowedIamArns ]
           - Sid: EnforceHTTPS
             Effect: Deny
             Principal: '*'

@@ -1,40 +1,31 @@
-terraform {
-  required_version = ">= 1.10.0"
-
-  backend "s3" {
-    key = "queue/aws-sqs/terraform.tfstate"
-  }
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
 provider "aws" {
+  region = var.region
+
   default_tags {
-    tags = {
-      TerraformKey = "queue/aws-sqs"
-      SystemName   = var.system_name
-      Environment  = var.env
-      ManagedBy    = "Terraform"
-    }
+    tags = merge(
+      {
+        TerraformKey = "queue/aws-sqs"
+        SystemName   = var.system_name
+        Environment  = var.env
+        ManagedBy    = "Terraform"
+      },
+      var.default_tags
+    )
   }
 }
 
-# 実行中のAWSアカウントIDを取得するため
+# 実行中のAWSアカウントID・パーティションを取得するため
 data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
 
 # ---------------------------------------------
 # デッドレターキュー (DLQ)
 # ---------------------------------------------
 resource "aws_sqs_queue" "dl" {
-  name_prefix                = "${var.system_name}-${var.env}-DLQueue-"
+  name_prefix                = "${var.system_name}-${var.env}-dead-letter-queue-"
   sqs_managed_sse_enabled    = true
-  visibility_timeout_seconds = 30
-  message_retention_seconds  = 604800
+  visibility_timeout_seconds = var.dlq_visibility_timeout_seconds
+  message_retention_seconds  = var.dlq_message_retention_seconds
   max_message_size           = 262144
 }
 
@@ -51,15 +42,15 @@ resource "aws_sqs_queue_redrive_allow_policy" "dlq" {
 # メインのキュー
 # ---------------------------------------------
 resource "aws_sqs_queue" "main" {
-  name_prefix                = "${var.system_name}-${var.env}-Queue-"
+  name_prefix                = "${var.system_name}-${var.env}-queue-"
   sqs_managed_sse_enabled    = true
-  visibility_timeout_seconds = 20
-  message_retention_seconds  = 604800
+  visibility_timeout_seconds = var.main_visibility_timeout_seconds
+  message_retention_seconds  = var.main_message_retention_seconds
   max_message_size           = 262144
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dl.arn
-    maxReceiveCount     = 3
+    maxReceiveCount     = var.max_receive_count
   })
 }
 
@@ -74,9 +65,16 @@ data "aws_iam_policy_document" "main" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:${var.operation_iam_path}"]
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:${var.operation_iam_path}"]
     }
-    actions   = ["sqs:*"]
+    actions = [
+      "sqs:SendMessage",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+      "sqs:GetQueueUrl",
+      "sqs:ChangeMessageVisibility",
+    ]
     resources = [aws_sqs_queue.main.arn]
   }
 }

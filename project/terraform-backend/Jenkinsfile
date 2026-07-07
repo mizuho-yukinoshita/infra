@@ -3,49 +3,186 @@ pipeline {
 
     options {
         ansiColor('xterm')
+        timeout(time: 60, unit: 'MINUTES')
     }
 
     parameters {
         string(name: 'AWS_REGION', defaultValue: 'ap-northeast-1', description: 'AWS Region')
         string(name: 'AWS_PROFILE', defaultValue: 'default', description: 'AWS CLI Profile Name')
         string(name: 'STACK_NAME', defaultValue: 'terraform-backend', description: 'CloudFormation Stack Name')
+        string(name: 'ADDITIONAL_ALLOWED_IAM_ARNS', defaultValue: '',
+                description: 'state バケットへのアクセスを追加で許可する IAM ARN (カンマ区切り、ワイルドカード可、空可)')
     }
 
     environment {
-        SELF_DIR = 'project/terraform-backend'
-        BACKEND_TEMPLATE_FILE = "${SELF_DIR}/cfn-terraform-backend.yaml"
-        BACKEND_CONFIG_FILE = 'config/backend.hcl'
+        AWS_REGION = "${params.AWS_REGION}"
+        AWS_PROFILE = "${params.AWS_PROFILE}"
+        STACK_NAME = "${params.STACK_NAME}"
+        SELF_DIR = "${WORKSPACE}/project/terraform-backend"
+        BACKEND_TEMPLATE_FILE = "${WORKSPACE}/project/terraform-backend/cfn-terraform-backend.yaml"
+        BACKEND_CONFIG_FILE = "${WORKSPACE}/config/backend.hcl"
+        CFN_PARAMS_FILE = "${WORKSPACE}/cfn-parameters.json"
+        CHANGE_SET_NAME = "terraform-backend-${BUILD_NUMBER}"
     }
 
     stages {
-        stage('Get DevOps IAM') {
+        stage('Resolve Allowed IAM ARNs') {
             steps {
                 script {
-                    def iamArn = sh(script: "aws sts get-caller-identity --profile ${params.AWS_PROFILE} --query 'Arn' --output text", returnStdout: true).trim()
+                    def iamArn = sh(
+                            script: 'aws sts get-caller-identity --profile "$AWS_PROFILE" --region "$AWS_REGION" --query Arn --output text',
+                            returnStdout: true
+                    ).trim()
 
-                    // convert if assumed-role returned
-                    env.DEVOPS_IAM_ARN = iamArn.replaceAll('sts::', 'iam::')
-                                               .replaceAll('assumed-role/', 'role/')
-                                               .split('/')[0..1].join('/')
+                    // assumed-role ARN (arn:aws:sts::<acct>:assumed-role/<RoleName>/<SessionName>)
+                    // の場合のみ、末尾のセッション名を落として IAM ロール ARN に変換する。
+                    // IAM ユーザーやパス付きロール ARN はそのまま使う。
+                    def principalArn = iamArn
+                    if (iamArn.contains(':assumed-role/')) {
+                        def parts = iamArn.split('/')
+                        principalArn = parts[0..-2].join('/')
+                                .replace(':sts::', ':iam::')
+                                .replace(':assumed-role/', ':role/')
+                    }
 
-                    echo "Identified Principal ARN: ${env.DEVOPS_IAM_ARN}"
+                    def allowedArns = [principalArn]
+                    def additional = params.ADDITIONAL_ALLOWED_IAM_ARNS.trim()
+                    if (additional) {
+                        allowedArns += additional.split(',').collect { it.trim() }.findAll { it }
+                    }
+
+                    echo "Allowed IAM ARNs: ${allowedArns}"
+
+                    // CommaDelimitedList の値にカンマが含まれるため、
+                    // --parameter-overrides ではなくパラメータファイルで渡す
+                    writeFile file: env.CFN_PARAMS_FILE,
+                            text: groovy.json.JsonOutput.toJson([
+                                    [ParameterKey: 'AllowedIamArns', ParameterValue: allowedArns.join(',')]
+                            ])
                 }
             }
         }
 
-        stage('Deploy CloudFormation') {
+        stage('Create Change Set') {
             steps {
-                sh """
-                    aws cloudformation deploy \
-                        --profile ${params.AWS_PROFILE} \
-                        --template-file ${env.BACKEND_TEMPLATE_FILE} \
-                        --stack-name ${params.STACK_NAME} \
-                        --parameter-overrides \
-                            DevOpsIAMArn=${env.DEVOPS_IAM_ARN} \
-                            BucketName=${params.BUCKET_NAME} \
-                        --no-fail-on-empty-changeset \
-                        --region ${params.AWS_REGION}
-                """
+                script {
+                    def stackStatus = sh(
+                            script: '''
+                            aws cloudformation describe-stacks \
+                                --profile "$AWS_PROFILE" \
+                                --region "$AWS_REGION" \
+                                --stack-name "$STACK_NAME" \
+                                --query 'Stacks[0].StackStatus' \
+                                --output text 2>/dev/null || echo NOT_FOUND
+                        ''',
+                            returnStdout: true
+                    ).trim()
+
+                    env.CHANGE_SET_TYPE = (stackStatus == 'NOT_FOUND' || stackStatus == 'REVIEW_IN_PROGRESS') ? 'CREATE' : 'UPDATE'
+                    echo "Stack status: ${stackStatus} -> change set type: ${env.CHANGE_SET_TYPE}"
+
+                    sh '''
+                        aws cloudformation create-change-set \
+                            --profile "$AWS_PROFILE" \
+                            --region "$AWS_REGION" \
+                            --stack-name "$STACK_NAME" \
+                            --change-set-name "$CHANGE_SET_NAME" \
+                            --change-set-type "$CHANGE_SET_TYPE" \
+                            --template-body "file://$BACKEND_TEMPLATE_FILE" \
+                            --parameters "file://$CFN_PARAMS_FILE"
+                    '''
+
+                    def waitStatus = sh(
+                            script: '''
+                            aws cloudformation wait change-set-create-complete \
+                                --profile "$AWS_PROFILE" \
+                                --region "$AWS_REGION" \
+                                --stack-name "$STACK_NAME" \
+                                --change-set-name "$CHANGE_SET_NAME"
+                        ''',
+                            returnStatus: true
+                    )
+
+                    if (waitStatus != 0) {
+                        def statusReason = sh(
+                                script: '''
+                                aws cloudformation describe-change-set \
+                                    --profile "$AWS_PROFILE" \
+                                    --region "$AWS_REGION" \
+                                    --stack-name "$STACK_NAME" \
+                                    --change-set-name "$CHANGE_SET_NAME" \
+                                    --query StatusReason \
+                                    --output text
+                            ''',
+                                returnStdout: true
+                        ).trim()
+
+                        if (statusReason.contains("didn't contain changes") || statusReason.contains('No updates')) {
+                            // 変更なし: changeset を掃除してデプロイをスキップ
+                            env.NO_CHANGES = 'true'
+                            sh '''
+                                aws cloudformation delete-change-set \
+                                    --profile "$AWS_PROFILE" \
+                                    --region "$AWS_REGION" \
+                                    --stack-name "$STACK_NAME" \
+                                    --change-set-name "$CHANGE_SET_NAME"
+                            '''
+                            echo 'No changes detected. Skipping deployment.'
+                        } else {
+                            error "Change set creation failed: ${statusReason}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Review Change Set') {
+            when {
+                expression { env.NO_CHANGES != 'true' }
+            }
+            steps {
+                sh '''
+                    aws cloudformation describe-change-set \
+                        --profile "$AWS_PROFILE" \
+                        --region "$AWS_REGION" \
+                        --stack-name "$STACK_NAME" \
+                        --change-set-name "$CHANGE_SET_NAME" \
+                        --query 'Changes[].{Action:ResourceChange.Action,LogicalId:ResourceChange.LogicalResourceId,Type:ResourceChange.ResourceType,Replacement:ResourceChange.Replacement}' \
+                        --output table
+                '''
+                timeout(time: 30, unit: 'MINUTES') {
+                    // 管理者のみ承認可能 (Overall/Administer 権限保持者は submitter 指定に関わらず常に承認できる Jenkins の仕様を利用)
+                    input message: '上記の Change Set の内容を確認しましたか？実行してよろしいですか？',
+                            ok: '実行する',
+                            submitter: 'admin'
+                }
+            }
+        }
+
+        stage('Execute Change Set') {
+            when {
+                expression { env.NO_CHANGES != 'true' }
+            }
+            steps {
+                sh '''
+                    aws cloudformation execute-change-set \
+                        --profile "$AWS_PROFILE" \
+                        --region "$AWS_REGION" \
+                        --stack-name "$STACK_NAME" \
+                        --change-set-name "$CHANGE_SET_NAME"
+
+                    if [ "$CHANGE_SET_TYPE" = "CREATE" ]; then
+                        aws cloudformation wait stack-create-complete \
+                            --profile "$AWS_PROFILE" \
+                            --region "$AWS_REGION" \
+                            --stack-name "$STACK_NAME"
+                    else
+                        aws cloudformation wait stack-update-complete \
+                            --profile "$AWS_PROFILE" \
+                            --region "$AWS_REGION" \
+                            --stack-name "$STACK_NAME"
+                    fi
+                '''
             }
         }
 
@@ -53,8 +190,15 @@ pipeline {
             steps {
                 script {
                     def bucketName = sh(
-                        script: "aws cloudformation describe-stacks --profile ${params.AWS_PROFILE} --region ${params.AWS_REGION} --stack-name ${params.STACK_NAME} --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text",
-                        returnStdout: true
+                            script: '''
+                            aws cloudformation describe-stacks \
+                                --profile "$AWS_PROFILE" \
+                                --region "$AWS_REGION" \
+                                --stack-name "$STACK_NAME" \
+                                --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
+                                --output text
+                        ''',
+                            returnStdout: true
                     ).trim()
 
                     def backendContent = """\

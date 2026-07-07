@@ -3,19 +3,27 @@ pipeline {
 
     options {
         ansiColor('xterm')
+        timeout(time: 2, unit: 'HOURS')
+        disableConcurrentBuilds()
     }
 
     parameters {
-        choice(name: 'ACTION', choices: ['apply', 'destroy'], description: 'Action')
-        choice(name: 'ENV', choices: ['dev', 'stg', 'prd'], description: 'Deploy Environment')
-
         string(name: 'AWS_REGION', defaultValue: 'ap-northeast-1', description: 'AWS Region')
         string(name: 'AWS_PROFILE', defaultValue: 'default', description: 'AWS CLI Profile Name')
         string(name: 'BACKEND_STACK_NAME', defaultValue: 'terraform-backend', description: 'CloudFormation Stack Name for Backend')
+        choice(name: 'ENV', choices: ['dev', 'stg', 'prod'], description: 'Deploy Environment')
+        choice(name: 'ACTION', choices: ['apply', 'destroy'], description: 'Action')
     }
 
     environment {
+        AWS_REGION = "${params.AWS_REGION}"
+        AWS_PROFILE = "${params.AWS_PROFILE}"
+        BACKEND_STACK_NAME = "${params.BACKEND_STACK_NAME}"
+        ENV = "${params.ENV}"
+        ACTION = "${params.ACTION}"
+        TF_IN_AUTOMATION = 'true'
         SELF_DIR = 'project/database/aws-elasticache-valkey'
+        STATE_KEY_PREFIX = 'database/aws-elasticache-valkey'
         BACKEND_CONFIG_FILE = "${WORKSPACE}/config/backend.hcl"
     }
 
@@ -23,19 +31,32 @@ pipeline {
         stage('Prepare Backend Config') {
             steps {
                 script {
+                    // 既存の CFn スタックから S3 バケット名を動的に取得
                     def bucketName = sh(
-                        script: "aws cloudformation describe-stacks --profile ${params.AWS_PROFILE} --region ${params.AWS_REGION} --stack-name ${params.BACKEND_STACK_NAME} --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' --output text",
-                        returnStdout: true
+                            script: '''
+                            aws cloudformation describe-stacks \
+                                --profile "$AWS_PROFILE" \
+                                --region "$AWS_REGION" \
+                                --stack-name "$BACKEND_STACK_NAME" \
+                                --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
+                                --output text
+                        ''',
+                            returnStdout: true
                     ).trim()
 
+                    // Terraform 用の backend.hcl を生成
+                    // key は versions.tf の backend ブロックには書かず、ここで ENV ごとに指定する規約
                     def backendContent = """\
                         bucket       = "${bucketName}"
+                        key          = "${env.STATE_KEY_PREFIX}/${params.ENV}/terraform.tfstate"
                         region       = "${params.AWS_REGION}"
                         use_lockfile = true
                         encrypt      = true
                     """.stripIndent()
 
                     writeFile file: env.BACKEND_CONFIG_FILE, text: backendContent
+
+                    echo "Generated ${env.BACKEND_CONFIG_FILE} with bucket: ${bucketName}"
                 }
             }
         }
@@ -43,7 +64,7 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir("${env.SELF_DIR}") {
-                    sh "terraform init -backend-config=${env.BACKEND_CONFIG_FILE}"
+                    sh 'terraform init -input=false -backend-config="$BACKEND_CONFIG_FILE"'
                 }
             }
         }
@@ -54,7 +75,7 @@ pipeline {
             }
             steps {
                 dir("${env.SELF_DIR}") {
-                    sh "terraform plan -var-file=${params.ENV}.tfvars -out=tfplan"
+                    sh 'terraform plan -input=false -var-file="${ENV}.tfvars" -out=tfplan'
                 }
             }
         }
@@ -65,24 +86,59 @@ pipeline {
             }
             steps {
                 dir("${env.SELF_DIR}") {
-                    sh "terraform plan -destroy -var-file=${params.ENV}.tfvars -out=tfplan"
+                    sh 'terraform plan -destroy -input=false -var-file="${ENV}.tfvars" -out=tfplan'
                 }
             }
         }
 
         stage('Approval') {
             steps {
-                input message: "Terraform Planの内容（${params.ACTION}）を確認しましたか？実行してよろしいですか？",
-                      ok: "実行する"
+                timeout(time: 60, unit: 'MINUTES') {
+                    // 管理者のみ承認可能 (Overall/Administer 権限保持者は submitter 指定に関わらず常に承認できる Jenkins の仕様を利用)
+                    input message: "Terraform Plan の内容 (ENV: ${params.ENV} / ACTION: ${params.ACTION}) を確認しましたか？実行してよろしいですか？",
+                            ok: '実行する',
+                            submitter: 'admin'
+                }
             }
         }
 
-        stage('Terraform Execution') {
-            steps {
-                dir("${env.SELF_DIR}") {
-                    sh "terraform apply -auto-approve tfplan"
+        stage('Confirm Destroy Prod') {
+            when {
+                allOf {
+                    expression { params.ACTION == 'destroy' }
+                    expression { params.ENV == 'prod' }
                 }
             }
+            steps {
+                timeout(time: 60, unit: 'MINUTES') {
+                    script {
+                        def confirmEnv = input(
+                                message: '本番環境 (prod) の destroy を実行しようとしています。続行するには環境名 "prod" を入力してください。',
+                                ok: '確認',
+                                submitter: 'admin',
+                                parameters: [string(name: 'CONFIRM_ENV', defaultValue: '', description: '環境名 (prod) を入力')]
+                        )
+                        if (confirmEnv != 'prod') {
+                            error '確認入力が環境名 "prod" と一致しません。destroy を中断します。'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                dir("${env.SELF_DIR}") {
+                    sh 'terraform apply -input=false tfplan'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // 機密値を含み得る plan ファイルを削除
+            sh 'rm -f "$WORKSPACE/$SELF_DIR/tfplan"'
         }
     }
 }
