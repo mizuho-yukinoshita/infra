@@ -4,8 +4,19 @@ variable "system_name" {
 }
 
 variable "env" {
-  description = "環境名 (例: dev, stg, prd)"
+  description = "環境名 (dev, stg, prod)"
   type        = string
+
+  validation {
+    condition     = contains(["dev", "stg", "prod"], var.env)
+    error_message = "env は dev, stg, prod のいずれかを指定してください。"
+  }
+}
+
+variable "region" {
+  description = "AWSリージョン"
+  type        = string
+  default     = "ap-northeast-1"
 }
 
 variable "subnet_group_name" {
@@ -19,14 +30,50 @@ variable "security_group_ids" {
   type        = list(string)
 }
 
+variable "master_username" {
+  description = "マスターユーザー名"
+  type        = string
+  default     = "admin"
+}
+
 variable "manage_master_password" {
-  description = "AWS Secrets Managerによるパスワード自動管理を有効にするか"
+  description = "AWS Secrets Managerによるマスターパスワードの自動管理を有効にするか（推奨: true）"
   type        = bool
-  default     = false
+  default     = true
+}
+
+variable "master_password" {
+  description = "マスターパスワード（manage_master_password = false の場合のみ使用）。tfvars には書かず、環境変数 TF_VAR_master_password で注入すること"
+  type        = string
+  default     = null
+  sensitive   = true
+
+  validation {
+    condition     = var.manage_master_password || var.master_password != null
+    error_message = "manage_master_password = false の場合は master_password を指定してください（TF_VAR_master_password で注入）。"
+  }
+}
+
+variable "engine_version" {
+  description = "Aurora MySQLのエンジンバージョン"
+  type        = string
+  default     = "8.0.mysql_aurora.3.10.2"
 }
 
 variable "storage_encrypted" {
   description = "ストレージの暗号化を有効にするか"
+  type        = bool
+  default     = true
+}
+
+variable "kms_key_id" {
+  description = "暗号化に使用するKMSキーのARN（未指定の場合はAWSマネージドキーを使用）"
+  type        = string
+  default     = null
+}
+
+variable "deletion_protection" {
+  description = "クラスターの削除保護を有効にするか"
   type        = bool
   default     = true
 }
@@ -56,9 +103,20 @@ variable "delete_automated_backups" {
 }
 
 variable "skip_final_snapshot" {
-  description = "クラスター削除時に最終スナップショットの取得をスキップするか"
+  description = "クラスター削除時に最終スナップショットの取得をスキップするか（prodではfalse推奨）"
   type        = bool
   default     = true
+}
+
+variable "final_snapshot_identifier" {
+  description = "最終スナップショットの識別子（skip_final_snapshot = false の場合に必須）"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.skip_final_snapshot || var.final_snapshot_identifier != null
+    error_message = "skip_final_snapshot = false の場合は final_snapshot_identifier を指定してください。"
+  }
 }
 
 variable "copy_tags_to_snapshot" {
@@ -86,15 +144,27 @@ variable "performance_insights_retention_period" {
 }
 
 variable "cluster_parameter_group_name" {
-  description = "（既存を利用する場合）クラスターパラメータグループ名"
-  type = string
-  default = null
+  description = "（既存を利用する場合）クラスターパラメータグループ名。null または \"\" の場合は自前で作成する"
+  type        = string
+  default     = null
+}
+
+variable "cluster_parameter_group_family" {
+  description = "自前で作成するクラスターパラメータグループのファミリー"
+  type        = string
+  default     = "aurora-mysql8.0"
 }
 
 variable "db_parameter_group_name" {
-  description = "（既存を利用する場合）インスタンスパラメータグループ名"
-  type = string
-  default = null
+  description = "（既存を利用する場合）インスタンスパラメータグループ名。null または \"\" の場合は自前で作成する"
+  type        = string
+  default     = null
+}
+
+variable "db_parameter_group_family" {
+  description = "自前で作成するインスタンスパラメータグループのファミリー"
+  type        = string
+  default     = "aurora-mysql8.0"
 }
 
 variable "writer_instance_class" {
@@ -112,6 +182,11 @@ variable "reader_count" {
   description = "作成するReaderの台数（0なら作らない）"
   type        = number
   default     = 0
+
+  validation {
+    condition     = var.reader_count == 0 || var.reader_instance_class != null
+    error_message = "reader_count > 0 の場合は reader_instance_class を指定してください。"
+  }
 }
 
 variable "serverless_min_capacity" {
@@ -124,6 +199,11 @@ variable "serverless_max_capacity" {
   description = "Serverless v2の最大ACU（0の場合はServerless設定を行わない）"
   type        = number
   default     = 0
+
+  validation {
+    condition     = (var.writer_instance_class != "db.serverless" && var.reader_instance_class != "db.serverless") || var.serverless_max_capacity > 0
+    error_message = "インスタンスクラスに db.serverless を指定する場合は serverless_max_capacity を 1 以上にしてください。"
+  }
 }
 
 variable "cluster_parameters" {
@@ -181,6 +261,7 @@ variable "writer_tags" {
   type        = map(string)
   default     = {}
 }
+
 variable "reader_tags" {
   description = "Readerに付与するタグ"
   type        = map(string)
