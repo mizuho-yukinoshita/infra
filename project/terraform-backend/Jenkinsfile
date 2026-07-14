@@ -21,7 +21,6 @@ pipeline {
         SELF_DIR = "${WORKSPACE}/project/terraform-backend"
         BACKEND_TEMPLATE_FILE = "${WORKSPACE}/project/terraform-backend/cfn-terraform-backend.yaml"
         BACKEND_CONFIG_FILE = "${WORKSPACE}/config/backend.hcl"
-        CFN_PARAMS_FILE = "${WORKSPACE}/cfn-parameters.json"
         CHANGE_SET_NAME = "terraform-backend-${BUILD_NUMBER}"
     }
 
@@ -34,9 +33,7 @@ pipeline {
                             returnStdout: true
                     ).trim()
 
-                    // assumed-role ARN (arn:aws:sts::<acct>:assumed-role/<RoleName>/<SessionName>)
-                    // の場合のみ、末尾のセッション名を落として IAM ロール ARN に変換する。
-                    // IAM ユーザーやパス付きロール ARN はそのまま使う。
+                    // assumed-role ARN (arn:aws:sts::<acct>:assumed-role/<RoleName>/<SessionName>) をIAMロールARNに変換
                     def principalArn = iamArn
                     if (iamArn.contains(':assumed-role/')) {
                         def parts = iamArn.split('/')
@@ -52,13 +49,7 @@ pipeline {
                     }
 
                     echo "Allowed IAM ARNs: ${allowedArns}"
-
-                    // CommaDelimitedList の値にカンマが含まれるため、
-                    // --parameter-overrides ではなくパラメータファイルで渡す
-                    writeFile file: env.CFN_PARAMS_FILE,
-                            text: groovy.json.JsonOutput.toJson([
-                                    [ParameterKey: 'AllowedIamArns', ParameterValue: allowedArns.join(',')]
-                            ])
+                    env.ALLOWED_IAM_ARNS = allowedArns.join('\\,')
                 }
             }
         }
@@ -89,7 +80,7 @@ pipeline {
                             --change-set-name "$CHANGE_SET_NAME" \
                             --change-set-type "$CHANGE_SET_TYPE" \
                             --template-body "file://$BACKEND_TEMPLATE_FILE" \
-                            --parameters "file://$CFN_PARAMS_FILE"
+                            --parameters "ParameterKey=AllowedIamArns,ParameterValue=$ALLOWED_IAM_ARNS"
                     '''
 
                     def waitStatus = sh(
