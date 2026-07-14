@@ -71,7 +71,7 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 dir("${env.SELF_DIR}") {
-                    sh 'terraform init -input=false -backend-config="$BACKEND_CONFIG_FILE"'
+                    sh 'terraform init -input=false -reconfigure -backend-config="$BACKEND_CONFIG_FILE"'
                 }
             }
         }
