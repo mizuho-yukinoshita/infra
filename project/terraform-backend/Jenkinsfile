@@ -20,9 +20,9 @@ pipeline {
         AWS_PROFILE = "${params.AWS_PROFILE}"
         STACK_NAME = "${params.STACK_NAME}"
         SELF_DIR = "${WORKSPACE}/project/terraform-backend"
-        BACKEND_TEMPLATE_FILE = "${WORKSPACE}/project/terraform-backend/cfn-terraform-backend.yaml"
+        BACKEND_TEMPLATE_FILE = "${SELF_DIR}/cfn-terraform-backend.yaml"
         BACKEND_CONFIG_FILE = "${WORKSPACE}/config/backend.hcl"
-        CHANGE_SET_NAME = "terraform-backend-${BUILD_NUMBER}"
+        CHANGE_SET_NAME = "${params.STACK_NAME}-${BUILD_NUMBER}"
     }
 
     stages {

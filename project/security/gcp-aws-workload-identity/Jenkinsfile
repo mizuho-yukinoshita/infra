@@ -24,8 +24,8 @@ pipeline {
         ENV = "${params.ENV}"
         ACTION = "${params.ACTION}"
         TF_IN_AUTOMATION = 'true'
-        SELF_DIR = 'project/security/gcp-aws-workload-identity'
         STATE_KEY_PREFIX = 'security/gcp-aws-workload-identity'
+        SELF_DIR = "project/${STATE_KEY_PREFIX}"
         BACKEND_CONFIG_FILE = "${WORKSPACE}/config/backend.hcl"
     }
 
