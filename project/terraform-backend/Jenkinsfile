@@ -4,6 +4,7 @@ pipeline {
     options {
         ansiColor('xterm')
         timeout(time: 60, unit: 'MINUTES')
+        skipDefaultCheckout()
     }
 
     parameters {
@@ -25,6 +26,12 @@ pipeline {
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Resolve Allowed IAM ARNs') {
             steps {
                 script {

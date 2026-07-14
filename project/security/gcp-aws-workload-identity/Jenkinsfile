@@ -5,6 +5,7 @@ pipeline {
         ansiColor('xterm')
         timeout(time: 2, unit: 'HOURS')
         disableConcurrentBuilds()
+        skipDefaultCheckout()
     }
 
     parameters {
@@ -29,6 +30,12 @@ pipeline {
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Prepare Backend Config') {
             steps {
                 script {
