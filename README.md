@@ -22,6 +22,8 @@ infra/
     │   └── aws-elasticache-valkey/      # ElastiCache (Valkey)
     ├── queue/
     │   └── aws-sqs/                     # SQS queues
+    ├── security/
+    │   └── gcp-aws-workload-identity/   # GCP <-> AWS workload identity federation
     └── terraform-backend/               # Terraform state backend bootstrap (CloudFormation)
         ├── backend.sample.hcl           # Sample backend.hcl config file
         ├── cfn-terraform-backend.yaml   # CloudFormation template
@@ -57,7 +59,7 @@ All templates share the same Jenkins pipeline pattern: **plan → manual approva
 * **Environment names:** Unified as `dev` / `stg` / `prod`.
 * **tfvars:** This repository is a template collection and ships only the `sample.tfvars` skeleton per template. When adopting a template for a real project, create per-environment tfvars (`dev.tfvars` / `stg.tfvars` / `prod.tfvars`) with `cp sample.tfvars <env>.tfvars` and **commit them to the repository** (`.gitignore` does not exclude tfvars), so Jenkins picks them up from the clean checkout with no extra setup. Never put secrets (passwords, private keys, tokens, etc.) in tfvars; inject them via `TF_VAR_*` environment variables or AWS Secrets Manager.
 * **State key:** `<category>/<template>/<ENV>/terraform.tfstate` (appended by Jenkins when generating `backend.hcl`).
-* **AWS provider version:** Unified as `~> 5.73`.
+* **Provider versions:** AWS is unified as `~> 5.73`; Google (used by `security/gcp-aws-workload-identity`) as `~> 6.0`.
 * **`.terraform.lock.hcl`:** Not generated yet in this repository. Committing it after running `terraform init` locally is recommended to pin provider versions.
 
 ## Setup (terraform-backend)
@@ -113,6 +115,8 @@ infra/
     │   └── aws-elasticache-valkey/      # ElastiCache (Valkey)
     ├── queue/
     │   └── aws-sqs/                     # SQS キュー
+    ├── security/
+    │   └── gcp-aws-workload-identity/   # GCP ⇔ AWS Workload Identity 連携
     └── terraform-backend/               # Terraform ステートバックエンド構築 (CloudFormation)
         ├── backend.sample.hcl           # backend.hcl 設定ファイルのサンプル
         ├── cfn-terraform-backend.yaml   # CloudFormation テンプレート
@@ -148,7 +152,7 @@ infra/
 * **環境名:** `dev` / `stg` / `prod` に統一
 * **tfvars:** このリポジトリはテンプレート集のため、各テンプレートに同梱するのは雛形の**`sample.tfvars` のみ**。実プロジェクトで採用する際に環境別tfvars（`dev.tfvars` / `stg.tfvars` / `prod.tfvars`）を `cp sample.tfvars <env>.tfvars` で作成し、**そのままリポジトリにコミットする**（`.gitignore` はtfvarsを除外していない）。コミットされていればJenkinsのクリーンチェックアウトにも含まれるため、外部からの事前配置は不要。機密値（パスワード・秘密鍵・トークン等）はtfvarsに書かず、`TF_VAR_*` 環境変数またはAWS Secrets Managerで注入する
 * **stateキー:** `<カテゴリ>/<テンプレート名>/<ENV>/terraform.tfstate`（Jenkinsが `backend.hcl` 生成時に付与）
-* **AWSプロバイダのバージョン:** `~> 5.73` に統一
+* **プロバイダのバージョン:** AWS は `~> 5.73`、Google（`security/gcp-aws-workload-identity` で使用）は `~> 6.0` に統一
 * **`.terraform.lock.hcl`:** 現状未生成。プロバイダのバージョン固定のため、各自 `terraform init` 実行後にコミットすることを推奨
 
 ## セットアップ (terraform-backend)
