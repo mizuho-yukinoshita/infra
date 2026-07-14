@@ -33,7 +33,7 @@ pipeline {
                             returnStdout: true
                     ).trim()
 
-                    // assumed-role ARN (arn:aws:sts::<acct>:assumed-role/<RoleName>/<SessionName>) をIAMロールARNに変換
+                    // Assumed-role ARNs contain a per-session name, so persist the underlying IAM role ARN instead
                     def principalArn = iamArn
                     if (iamArn.contains(':assumed-role/')) {
                         def parts = iamArn.split('/')
@@ -49,6 +49,8 @@ pipeline {
                     }
 
                     echo "Allowed IAM ARNs: ${allowedArns}"
+
+                    // CLI shorthand syntax needs \, for commas inside a CommaDelimitedList value
                     env.ALLOWED_IAM_ARNS = allowedArns.join('\\,')
                 }
             }
@@ -109,7 +111,6 @@ pipeline {
                         ).trim()
 
                         if (statusReason.contains("didn't contain changes") || statusReason.contains('No updates')) {
-                            // 変更なし: changeset を掃除してデプロイをスキップ
                             env.NO_CHANGES = 'true'
                             sh '''
                                 aws cloudformation delete-change-set \
@@ -142,7 +143,7 @@ pipeline {
                         --output table
                 '''
                 timeout(time: 30, unit: 'MINUTES') {
-                    // 管理者のみ承認可能 (Overall/Administer 権限保持者は submitter 指定に関わらず常に承認できる Jenkins の仕様を利用)
+                    // Jenkins lets Overall/Administer holders approve regardless of the submitter setting
                     input message: '上記の Change Set の内容を確認しましたか？実行してよろしいですか？',
                             ok: '実行する',
                             submitter: 'admin'

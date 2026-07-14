@@ -1,15 +1,14 @@
 # =============================================================================
 # Terraform Backend (S3 + Lockfile)
 #
-# ロックアウトからの復旧手順:
-#   バケットポリシーの Deny (RestrictToIAM) は AllowedIamArns に含まれない
-#   プリンシパルのアクセスを拒否するが、アカウントの root ユーザー
-#   (arn:aws:iam::<account-id>:root) は常に除外している。
-#   AllowedIamArns の指定ミス等で全 IAM ユーザー/ロールが締め出された場合は、
-#   root ユーザーでサインインして次のいずれかを実施する:
-#     1. バケットポリシーを削除して復旧する:
+# Lockout recovery:
+#   The RestrictToIAM Deny blocks principals not listed in AllowedIamArns but
+#   always exempts the account root user (arn:aws:iam::<account-id>:root).
+#   If a bad AllowedIamArns value locks out every IAM user/role, sign in as
+#   root and either:
+#     1. Delete the bucket policy:
 #        aws s3api delete-bucket-policy --bucket <bucket-name>
-#     2. AllowedIamArns を修正して本スタックを更新する。
+#     2. Update this stack with a corrected AllowedIamArns.
 # =============================================================================
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Terraform Backend Using S3 with Locking'
