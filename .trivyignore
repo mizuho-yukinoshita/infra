@@ -1,0 +1,3 @@
+# Terraform state bucket (CloudFormation bootstrap) intentionally relies on SSE-S3;
+# requiring a customer managed KMS key would add a key dependency to the bootstrap stack.
+AVD-AWS-0132

@@ -21,48 +21,60 @@ backend の `key` はコードには書かず、Jenkins が生成する `backend
 
 ## 変数一覧
 
-| 変数名 | 型 | デフォルト | 説明 |
-| --- | --- | --- | --- |
-| `system_name` | string | （必須） | システム名 |
-| `env` | string | （必須） | 環境名（`dev` / `stg` / `prod` のみ） |
-| `region` | string | `ap-northeast-1` | AWS リージョン |
-| `subnet_group_name` | string | `null` | DB サブネットグループ名 |
-| `security_group_ids` | list(string) | （必須） | 適用するセキュリティグループ ID のリスト |
-| `master_username` | string | `admin` | マスターユーザー名 |
-| `manage_master_password` | bool | `true` | Secrets Manager によるパスワード自動管理（推奨） |
-| `master_password` | string (sensitive) | `null` | `manage_master_password = false` の場合のみ。**tfvars に書かず `TF_VAR_master_password` で注入** |
-| `engine_version` | string | `8.0.mysql_aurora.3.10.2` | Aurora MySQL エンジンバージョン |
-| `storage_encrypted` | bool | `true` | ストレージ暗号化 |
-| `kms_key_id` | string | `null` | 暗号化用 KMS キー ARN（未指定時は AWS マネージドキー） |
-| `deletion_protection` | bool | `true` | クラスターの削除保護 |
-| `backup_retention_period` | number | `7` | 自動バックアップ保持期間（日） |
-| `preferred_backup_window` | string | `19:30-20:59` | バックアップ時間帯（UTC） |
-| `preferred_maintenance_window` | string | `sat:20:30-sat:20:59` | メンテナンス時間帯（UTC） |
-| `delete_automated_backups` | bool | `true` | クラスター削除時に自動バックアップも削除するか |
-| `skip_final_snapshot` | bool | `true` | 削除時の最終スナップショット取得をスキップするか（prod は `false` 推奨） |
-| `final_snapshot_identifier` | string | `null` | 最終スナップショット識別子（`skip_final_snapshot = false` 時に必須） |
-| `copy_tags_to_snapshot` | bool | `true` | スナップショットへのタグコピー |
-| `enabled_cloudwatch_logs_exports` | list(string) | `[]` | CloudWatch へエクスポートするログ種別 |
-| `performance_insights_enabled` | bool | `false` | Performance Insights の有効化 |
-| `performance_insights_retention_period` | number | `7` | Performance Insights のデータ保持期間（日） |
-| `cluster_parameter_group_name` | string | `null` | 既存クラスターパラメータグループ名（`null` / `""` なら自前作成） |
-| `cluster_parameter_group_family` | string | `aurora-mysql8.0` | 自前作成時のクラスターパラメータグループのファミリー |
-| `db_parameter_group_name` | string | `null` | 既存インスタンスパラメータグループ名（`null` / `""` なら自前作成） |
-| `db_parameter_group_family` | string | `aurora-mysql8.0` | 自前作成時のインスタンスパラメータグループのファミリー |
-| `writer_instance_class` | string | （必須） | Writer のインスタンスクラス（Serverless v2 は `db.serverless`） |
-| `reader_instance_class` | string | `null` | Reader のインスタンスクラス（`reader_count > 0` の場合必須） |
-| `reader_count` | number | `0` | Reader の台数（0 なら作らない） |
-| `serverless_min_capacity` | number | `0` | Serverless v2 の最小 ACU |
-| `serverless_max_capacity` | number | `0` | Serverless v2 の最大 ACU（`db.serverless` 指定時は 1 以上が必須） |
-| `cluster_parameters` | list(object) | `[]` | クラスターパラメータのリスト |
-| `db_parameters` | list(object) | `[]` | インスタンスパラメータのリスト |
-| `route53_zone_name` | string | `null` | レコードを追加する Route 53 ホストゾーン名（`null` なら DNS レコードを作らない） |
-| `is_route53_zone_private` | bool | `true` | ホストゾーンがプライベートかどうか |
-| `route53_record_name` | string | `null` | レコード名（未指定時は `${system_name}-${env}-db`） |
-| `default_tags` | map(string) | `{}` | 全リソース共通タグ |
-| `cluster_tags` | map(string) | `{}` | クラスターのタグ |
-| `writer_tags` | map(string) | `{}` | Writer のタグ |
-| `reader_tags` | map(string) | `{}` | Reader のタグ |
+<!-- BEGIN_TF_DOCS -->
+### Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| env | 環境名 (dev, stg, prod) | `string` | n/a | yes |
+| security\_group\_ids | 適用するセキュリティグループIDのリスト | `list(string)` | n/a | yes |
+| system\_name | システム名 | `string` | n/a | yes |
+| writer\_instance\_class | Writer（マスター）のインスタンスクラス | `string` | n/a | yes |
+| backup\_retention\_period | 自動バックアップの保持期間（日） | `number` | `7` | no |
+| cluster\_parameter\_group\_family | 自前で作成するクラスターパラメータグループのファミリー | `string` | `"aurora-mysql8.0"` | no |
+| cluster\_parameter\_group\_name | （既存を利用する場合）クラスターパラメータグループ名。null または "" の場合は自前で作成する | `string` | `null` | no |
+| cluster\_parameters | クラスターパラメータのリスト | <pre>list(object({<br/>    name         = string<br/>    value        = string<br/>    apply_method = string<br/>  }))</pre> | `[]` | no |
+| cluster\_tags | クラスターに付与するタグ | `map(string)` | `{}` | no |
+| copy\_tags\_to\_snapshot | スナップショットにタグをコピーするか | `bool` | `true` | no |
+| db\_parameter\_group\_family | 自前で作成するインスタンスパラメータグループのファミリー | `string` | `"aurora-mysql8.0"` | no |
+| db\_parameter\_group\_name | （既存を利用する場合）インスタンスパラメータグループ名。null または "" の場合は自前で作成する | `string` | `null` | no |
+| db\_parameters | インスタンスパラメータのリスト | <pre>list(object({<br/>    name         = string<br/>    value        = string<br/>    apply_method = string<br/>  }))</pre> | `[]` | no |
+| default\_tags | リソースに付与する共通タグ | `map(string)` | `{}` | no |
+| delete\_automated\_backups | クラスター削除時に自動バックアップも削除するか | `bool` | `true` | no |
+| deletion\_protection | クラスターの削除保護を有効にするか | `bool` | `true` | no |
+| enabled\_cloudwatch\_logs\_exports | CloudWatchへエクスポートするログの種類 | `list(string)` | `[]` | no |
+| engine\_version | Aurora MySQLのエンジンバージョン | `string` | `"8.0.mysql_aurora.3.10.2"` | no |
+| final\_snapshot\_identifier | 最終スナップショットの識別子（skip\_final\_snapshot = false の場合に必須） | `string` | `null` | no |
+| is\_route53\_zone\_private | Route 53のホストゾーンがプライベート（VPC内のみ）かどうか | `bool` | `true` | no |
+| kms\_key\_id | 暗号化に使用するKMSキーのARN（未指定の場合はAWSマネージドキーを使用） | `string` | `null` | no |
+| manage\_master\_password | AWS Secrets Managerによるマスターパスワードの自動管理を有効にするか（推奨: true） | `bool` | `true` | no |
+| master\_password | マスターパスワード（manage\_master\_password = false の場合のみ使用）。tfvars には書かず、環境変数 TF\_VAR\_master\_password で注入すること | `string` | `null` | no |
+| master\_username | マスターユーザー名 | `string` | `"admin"` | no |
+| performance\_insights\_enabled | Performance Insightsを有効にするか | `bool` | `false` | no |
+| performance\_insights\_retention\_period | Performance Insightsのデータ保持期間（日） | `number` | `7` | no |
+| preferred\_backup\_window | 自動バックアップを実行する時間帯（UTC） | `string` | `"19:30-20:59"` | no |
+| preferred\_maintenance\_window | メンテナンスを実行する時間帯（UTC） | `string` | `"sat:20:30-sat:20:59"` | no |
+| reader\_count | 作成するReaderの台数（0なら作らない） | `number` | `0` | no |
+| reader\_instance\_class | Reader（リードレプリカ）のインスタンスクラス | `string` | `null` | no |
+| reader\_tags | Readerに付与するタグ | `map(string)` | `{}` | no |
+| region | AWSリージョン | `string` | `"ap-northeast-1"` | no |
+| route53\_record\_name | Route 53のレコード名。指定しない場合は${system\_name}-${env}-db | `string` | `null` | no |
+| route53\_zone\_name | クラスターエンドポイントのレコードを追加するRoute 53のホストゾーン名 | `string` | `null` | no |
+| serverless\_max\_capacity | Serverless v2の最大ACU（0の場合はServerless設定を行わない） | `number` | `0` | no |
+| serverless\_min\_capacity | Serverless v2の最小ACU | `number` | `0` | no |
+| skip\_final\_snapshot | クラスター削除時に最終スナップショットの取得をスキップするか（prodではfalse推奨） | `bool` | `true` | no |
+| storage\_encrypted | ストレージの暗号化を有効にするか | `bool` | `true` | no |
+| subnet\_group\_name | DBサブネットグループ名 | `string` | `null` | no |
+| writer\_tags | Writerに付与するタグ | `map(string)` | `{}` | no |
+
+### Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| cluster\_endpoint | 作成したAuroraクラスターの Write/Read エンドポイント |
+| cluster\_port | 作成したAuroraクラスターのポート番号 |
+| cluster\_ro\_endpoint | 作成したAuroraクラスターの ReadOnly エンドポイント |
+<!-- END_TF_DOCS -->
 
 ## tfvars の運用
 

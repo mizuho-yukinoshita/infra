@@ -56,6 +56,39 @@ All templates share the same Jenkins pipeline pattern: **plan → manual approva
 * `ACTION=destroy` produces a destroy plan and, after approval, deletes **all resources managed by that state**. Double-check `ENV` before approving.
 * Some resources may have deletion protection or final snapshot settings; review the destroy plan carefully.
 
+## CI
+
+Pull requests to `main` are checked by GitHub Actions (`.github/workflows/ci.yml`) with four parallel jobs:
+
+| Job | Check |
+|---|---|
+| `validate` | `terraform fmt -check` and `terraform validate` for every template |
+| `tflint` | TFLint with the AWS / Google rulesets (config: `.tflint.hcl`) |
+| `trivy` | Misconfiguration scan; HIGH/CRITICAL findings fail (exceptions: `.trivyignore`) |
+| `docs` | Freshness check of the terraform-docs-generated tables in each template README |
+
+### Before committing
+
+Install the tools once (`brew install tflint trivy terraform-docs`), then run from the repository root:
+
+```bash
+# Formatting (whole repo)
+terraform fmt -recursive project/
+
+# For each template you touched
+terraform -chdir=project/<category>/<template> init -backend=false
+terraform -chdir=project/<category>/<template> validate
+tflint --config "$PWD/.tflint.hcl" --chdir project/<category>/<template>
+
+# Required whenever variables.tf / outputs.tf changed: regenerate the README tables
+terraform-docs -c .terraform-docs.yml project/<category>/<template>
+
+# Security scan (same as CI)
+trivy config --severity HIGH,CRITICAL --ignorefile .trivyignore project/
+```
+
+Forgetting the `terraform-docs` regeneration is the most common CI failure: the `docs` job fails whenever a README table is out of sync with `variables.tf` / `outputs.tf`.
+
 ## Operational Conventions
 
 * **Environment names:** Unified as `dev` / `stg` / `prod`.
@@ -150,6 +183,39 @@ infra/
 
 * `ACTION=destroy` はdestroy planを生成し、承認後に**そのstateで管理されている全リソースを削除**する。承認前に `ENV` を必ず再確認すること
 * 削除保護や最終スナップショット設定を持つリソースが含まれる場合があるため、destroy planを慎重に確認すること
+
+## CI
+
+`main` への Pull Request は GitHub Actions（`.github/workflows/ci.yml`）で 4 つのジョブが並列にチェックする:
+
+| ジョブ | チェック内容 |
+|---|---|
+| `validate` | 全テンプレートの `terraform fmt -check` と `terraform validate` |
+| `tflint` | AWS / Google ルールセット付き TFLint（設定: `.tflint.hcl`） |
+| `trivy` | 設定ミスのセキュリティスキャン。HIGH/CRITICAL で失敗（例外は `.trivyignore`） |
+| `docs` | 各テンプレート README 内の terraform-docs 生成テーブルが最新かの検査 |
+
+### コミット前にやること
+
+ツールを未導入なら `brew install tflint trivy terraform-docs` で導入した上で、リポジトリルートから実行する:
+
+```bash
+# フォーマット (リポジトリ全体)
+terraform fmt -recursive project/
+
+# 変更したテンプレートごと
+terraform -chdir=project/<カテゴリ>/<テンプレート> init -backend=false
+terraform -chdir=project/<カテゴリ>/<テンプレート> validate
+tflint --config "$PWD/.tflint.hcl" --chdir project/<カテゴリ>/<テンプレート>
+
+# variables.tf / outputs.tf を変更した場合は必須: READMEのテーブルを再生成
+terraform-docs -c .terraform-docs.yml project/<カテゴリ>/<テンプレート>
+
+# セキュリティスキャン (CIと同一)
+trivy config --severity HIGH,CRITICAL --ignorefile .trivyignore project/
+```
+
+CI 落ちで最も多いのは `terraform-docs` の再生成忘れ。README のテーブルが `variables.tf` / `outputs.tf` とずれていると `docs` ジョブが失敗する。
 
 ## 運用規約
 

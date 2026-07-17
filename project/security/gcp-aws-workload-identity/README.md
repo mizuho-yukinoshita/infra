@@ -43,18 +43,36 @@ AWS の assume role policy（信頼ポリシー）はロール本体と不可分
 
 ## 変数一覧
 
-| 変数名 | 説明 | 型 | デフォルト |
-|---|---|---|---|
-| `system_name` | システム名 | string | (必須) |
-| `env` | 環境名 (dev / stg / prod) | string | (必須) |
-| `region` | AWS リージョン | string | `ap-northeast-1` |
-| `default_tags` | 全 AWS リソースに付与する追加タグ | map(string) | `{}` |
-| `google_oidc_audiences` | Google OIDC トークンの audience の既定値 | list(string) | `["sts.amazonaws.com"]` |
-| `create_google_oidc_provider` | `accounts.google.com` の OIDC プロバイダを作成するか（既存がある場合は false） | bool | `true` |
-| `gcp_to_aws_roles` | GCP→AWS 連携の IAM ロール定義（下表） | map(object) | `{}` |
-| `gcp_project_id` | GCP プロジェクト ID（AWS→GCP 使用時は必須） | string | `null` |
-| `aws_account_id` | GCP 側に信頼させる AWS アカウント ID（未指定なら実行中アカウント） | string | `null` |
-| `aws_to_gcp_service_accounts` | AWS→GCP 連携の GCP SA 定義（下表） | map(object) | `{}` |
+<!-- BEGIN_TF_DOCS -->
+### Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| env | 環境名 (dev / stg / prod) | `string` | n/a | yes |
+| system\_name | システム名 | `string` | n/a | yes |
+| aws\_account\_id | GCP側の Workload Identity Pool プロバイダに信頼させるAWSアカウントID。未指定の場合は実行中アカウントのIDを使用する | `string` | `null` | no |
+| aws\_to\_gcp\_service\_accounts | AWSのIAMロールに impersonate を許可するGCPサービスアカウントの定義。キーは識別子 (create = true の場合、SA の account\_id として使用する) | <pre>map(object({<br/>    create         = optional(bool, false)<br/>    email          = optional(string)<br/>    display_name   = optional(string)<br/>    aws_role_names = list(string)<br/>    project_roles  = optional(list(string), [])<br/>  }))</pre> | `{}` | no |
+| create\_google\_oidc\_provider | accounts.google.com の IAM OIDC プロバイダを作成するか。AWSアカウントに1つしか作れないため、既存がある場合は false にして参照する | `bool` | `true` | no |
+| default\_tags | 全AWSリソースに付与する追加タグ | `map(string)` | `{}` | no |
+| gcp\_project\_id | GCPプロジェクトID。AWS→GCP連携 (aws\_to\_gcp\_service\_accounts) を使用する場合は必須 | `string` | `null` | no |
+| gcp\_to\_aws\_roles | GCPのサービスアカウントに AssumeRoleWithWebIdentity を許可する IAM ロールの定義。キーはロールの識別子 (create\_role = true の場合、ロール名は <system\_name>-<env>-<キー> になる) | <pre>map(object({<br/>    gcp_service_account_unique_ids = list(string)<br/>    create_role                    = optional(bool, true)<br/>    existing_role_name             = optional(string)<br/>    managed_policy_arns            = optional(list(string), [])<br/>    inline_policy_json             = optional(string)<br/>    max_session_duration           = optional(number, 3600)<br/>    audiences                      = optional(list(string))<br/>  }))</pre> | `{}` | no |
+| google\_oidc\_audiences | Google OIDC トークンの audience の既定値。OIDCプロバイダの client\_id\_list と各ロールの信頼条件 (oaud) に使用する | `list(string)` | <pre>[<br/>  "sts.amazonaws.com"<br/>]</pre> | no |
+| region | AWSリージョン | `string` | `"ap-northeast-1"` | no |
+
+### Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| gcloud\_cred\_config\_commands | SAごとの認証構成ファイル生成コマンド例 (gcloud iam workload-identity-pools create-cred-config) |
+| gcp\_service\_account\_emails | AWSからの impersonate 対象GCPサービスアカウントのメールアドレス (作成・既存を合成) |
+| gcp\_to\_aws\_required\_trust\_policies | create\_role = false のエントリで、既存ロール側に設定が必要な信頼ポリシーJSON |
+| gcp\_to\_aws\_role\_arns | GCPから AssumeRoleWithWebIdentity できる IAM ロールのARN (作成・既存を合成) |
+| google\_oidc\_audiences | Google OIDC トークンの audience の既定値 |
+| google\_oidc\_provider\_arn | Google OIDC プロバイダのARN (GCP→AWS 無効時は null) |
+| principal\_set\_uris | AWS IAM ロール名ごとの principalSet URI |
+| workload\_identity\_pool\_name | Workload Identity Pool の完全リソース名 (AWS→GCP 無効時は null) |
+| workload\_identity\_pool\_provider\_name | Workload Identity Pool プロバイダの完全リソース名。cred-config 生成にそのまま使用できる (AWS→GCP 無効時は null) |
+<!-- END_TF_DOCS -->
 
 ### gcp_to_aws_roles のエントリ
 

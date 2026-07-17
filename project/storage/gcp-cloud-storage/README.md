@@ -29,14 +29,26 @@ Google Cloud Storage (GCS) バケットを作成する Terraform テンプレー
 
 ## 変数一覧
 
-| 変数名 | 説明 | 型 | デフォルト |
-|---|---|---|---|
-| `system_name` | システム名 | string | (必須) |
-| `env` | 環境名 (dev / stg / prod) | string | (必須) |
-| `gcp_project_id` | GCP プロジェクト ID | string | (必須) |
-| `location` | バケットのデフォルトロケーション | string | `asia-northeast1` |
-| `default_labels` | 全バケットに付与する追加ラベル（英小文字・数字・`-` `_` のみ） | map(string) | `{}` |
-| `buckets` | 作成するバケットの定義（下表） | map(object) | `{}` |
+<!-- BEGIN_TF_DOCS -->
+### Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| env | 環境名 (dev / stg / prod) | `string` | n/a | yes |
+| gcp\_project\_id | GCPプロジェクトID | `string` | n/a | yes |
+| system\_name | システム名 (バケット名とラベルに使用するため英小文字・数字・ハイフンのみ) | `string` | n/a | yes |
+| buckets | 作成するバケットの定義。キーはバケットの識別子 (name 未指定の場合、バケット名は <system\_name>-<env>-<キー> になる) | <pre>map(object({<br/>    name                     = optional(string)<br/>    location                 = optional(string)<br/>    storage_class            = optional(string, "STANDARD")<br/>    versioning               = optional(bool, false)<br/>    force_destroy            = optional(bool, false)<br/>    public_access_prevention = optional(string, "enforced")<br/>    kms_key_name             = optional(string)<br/>    lifecycle_rules = optional(list(object({<br/>      action             = string<br/>      storage_class      = optional(string)<br/>      age_days           = optional(number)<br/>      num_newer_versions = optional(number)<br/>      with_state         = optional(string)<br/>    })), [])<br/>    iam_members = optional(map(list(string)), {})<br/>    labels      = optional(map(string), {})<br/>  }))</pre> | `{}` | no |
+| default\_labels | 全バケットに付与する追加ラベル。キー・値とも英小文字・数字・ハイフン・アンダースコアのみ使用可 | `map(string)` | `{}` | no |
+| location | バケットのデフォルトロケーション (エントリごとに location で上書き可能) | `string` | `"asia-northeast1"` | no |
+
+### Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| bucket\_names | バケットの識別子 (マップのキー) => 実際のバケット名 |
+| bucket\_self\_links | バケットの識別子 => self\_link |
+| bucket\_urls | バケットの識別子 => gs:// URL |
+<!-- END_TF_DOCS -->
 
 ### buckets のエントリ
 
