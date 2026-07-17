@@ -3,16 +3,20 @@ plugin "terraform" {
   preset  = "recommended"
 }
 
+# signature = "pgp": attestation verification crashes tflint --init
+# (terraform-linters/tflint#2591); fall back to PGP until fixed upstream
 plugin "aws" {
-  enabled = true
-  version = "0.48.0"
-  source  = "github.com/terraform-linters/tflint-ruleset-aws"
+  enabled   = true
+  version   = "0.48.0"
+  source    = "github.com/terraform-linters/tflint-ruleset-aws"
+  signature = "pgp"
 }
 
 plugin "google" {
-  enabled = true
-  version = "0.39.0"
-  source  = "github.com/terraform-linters/tflint-ruleset-google"
+  enabled   = true
+  version   = "0.39.0"
+  source    = "github.com/terraform-linters/tflint-ruleset-google"
+  signature = "pgp"
 }
 
 # ElastiCache templates intentionally default to AWS default parameter groups;
