@@ -56,11 +56,10 @@ jobs:
           path: ~/.tflint.d/plugins
           key: tflint-${{ runner.os }}-${{ hashFiles('.tflint.hcl') }}
 
+      # No GITHUB_TOKEN: attestation verification panics with it set
+      # (terraform-linters/tflint#2591); plugin cache above covers rate limits
       - name: tflint --init
         run: tflint --init
-        env:
-          # Avoid rate limits when downloading plugins from GitHub releases
-          GITHUB_TOKEN: ${{ github.token }}
 
       - name: tflint
         run: |
