@@ -19,28 +19,39 @@ key = "database/aws-elasticache-valkey/${ENV}/terraform.tfstate"
 
 ## 変数一覧
 
-| 変数名 | 型 | デフォルト | 説明 |
-| --- | --- | --- | --- |
-| `system_name` | string | - | システム名 |
-| `env` | string | - | 環境名 (dev / stg / prod) |
-| `region` | string | `ap-northeast-1` | AWS リージョン |
-| `default_tags` | map(string) | `{}` | 固定タグにマージする追加タグ |
-| `subnet_ids` | list(string) | - | 配置先サブネット ID（プライベートサブネット必須） |
-| `security_group_ids` | list(string) | - | 適用するセキュリティグループ ID |
-| `engine_version` | string | `8.1` | エンジンバージョン（v7 以降は「メジャー.マイナー」形式のみ） |
-| `node_type` | string | `cache.t4g.micro` | ノードのインスタンスタイプ |
-| `parameter_group_name` | string | `default.valkey8` | パラメータグループ名 |
-| `automatic_failover_enabled` | bool | `false` | 自動フェイルオーバー（`num_cache_clusters >= 2` が必要） |
-| `multi_az_enabled` | bool | `false` | マルチ AZ（`automatic_failover_enabled = true` が必要） |
-| `num_cache_clusters` | number | `1` | クラスター内ノード数（プライマリ + レプリカ） |
-| `at_rest_encryption_enabled` | bool | `true` | 保存時の暗号化 |
-| `transit_encryption_enabled` | bool | `true` | 転送中の暗号化 (TLS) |
-| `kms_key_id` | string | `null` | 保存時暗号化用 KMS キー ARN（未指定時は AWS マネージドキー） |
-| `auth_token` | string (sensitive) | `null` | AUTH トークン（`transit_encryption_enabled = true` が前提。TF_VAR で注入） |
-| `snapshot_retention_limit` | number | `7` | 自動スナップショット保持日数（0 で無効） |
-| `snapshot_window` | string | `17:00-18:00` | スナップショット取得時間帯 (UTC) |
-| `maintenance_window` | string | `sun:18:00-sun:19:00` | メンテナンスウィンドウ (UTC) |
-| `apply_immediately` | bool | `false` | 変更の即時適用 |
+<!-- BEGIN_TF_DOCS -->
+### Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| env | 環境名 (dev, stg, prod) | `string` | n/a | yes |
+| security\_group\_ids | 適用するセキュリティグループIDのリスト (プライベートサブネット内からのアクセスのみ許可すること) | `list(string)` | n/a | yes |
+| subnet\_ids | ElastiCacheを配置するサブネットIDのリスト (プライベートサブネット必須) | `list(string)` | n/a | yes |
+| system\_name | システム名 | `string` | n/a | yes |
+| apply\_immediately | 変更を即時適用するか (false の場合は次回メンテナンスウィンドウで適用) | `bool` | `false` | no |
+| at\_rest\_encryption\_enabled | 保存時の暗号化を有効にするか | `bool` | `true` | no |
+| auth\_token | AUTHトークン (transit\_encryption\_enabled = true が前提)。tfvars には記載せず、環境変数 TF\_VAR\_auth\_token で注入すること | `string` | `null` | no |
+| automatic\_failover\_enabled | 自動フェイルオーバーを有効にするか (*Requires num\_cache\_clusters >= 2) | `bool` | `false` | no |
+| default\_tags | 全リソースに付与する追加タグ (固定タグにマージされる) | `map(string)` | `{}` | no |
+| engine\_version | Valkeyエンジンのバージョン (v7以降は「メジャー.マイナー」形式のみ。例: 8.1) | `string` | `"8.1"` | no |
+| kms\_key\_id | 保存時の暗号化に使用するKMSキーのARN (null の場合はAWSマネージドキーを使用) | `string` | `null` | no |
+| maintenance\_window | メンテナンスウィンドウ (UTC)。例: sun:18:00-sun:19:00 (JST 月曜 3:00-4:00) | `string` | `"sun:18:00-sun:19:00"` | no |
+| multi\_az\_enabled | マルチAZ配置を有効にするか (*Requires automatic\_failover\_enabled = true) | `bool` | `false` | no |
+| node\_type | キャッシュノードのインスタンスタイプ | `string` | `"cache.t4g.micro"` | no |
+| num\_cache\_clusters | クラスター内のノード数 | `number` | `1` | no |
+| parameter\_group\_name | 適用するパラメータグループ名 | `string` | `"default.valkey8"` | no |
+| region | AWSリージョン | `string` | `"ap-northeast-1"` | no |
+| snapshot\_retention\_limit | 自動スナップショットの保持日数 (0 で自動スナップショット無効) | `number` | `7` | no |
+| snapshot\_window | 自動スナップショットを取得する時間帯 (UTC)。maintenance\_window と重複しないこと | `string` | `"17:00-18:00"` | no |
+| transit\_encryption\_enabled | 転送中の暗号化 (TLS) を有効にするか | `bool` | `true` | no |
+
+### Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| valkey\_primary\_endpoint | Valkeyのプライマリエンドポイント |
+| valkey\_reader\_endpoint | Valkeyの読み取り専用エンドポイント |
+<!-- END_TF_DOCS -->
 
 ## tfvars の運用
 

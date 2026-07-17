@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'project/**'
+      - '.github/workflows/ci.yml'
+      - '.tflint.hcl'
+      - '.trivyignore'
+      - '.terraform-docs.yml'
+  workflow_dispatch:
+
+env:
+  TERRAFORM_DOCS_VERSION: v0.24.0
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+          # The wrapper breaks exit-code handling in shell loops
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff project/
+
+      - name: terraform validate
+        run: |
+          set -uo pipefail
+          rc=0
+          for dir in $(find project -name versions.tf -exec dirname {} \; | sort); do
+            echo "::group::${dir}"
+            terraform -chdir="$dir" init -backend=false -input=false > /dev/null || rc=1
+            terraform -chdir="$dir" validate || rc=1
+            echo "::endgroup::"
+          done
+          exit $rc
+
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v6.3.0
+        with:
+          tflint_version: v0.63.1
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ runner.os }}-${{ hashFiles('.tflint.hcl') }}
+
+      - name: tflint --init
+        run: tflint --init
+        env:
+          # Avoid rate limits when downloading plugins from GitHub releases
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: tflint
+        run: |
+          set -uo pipefail
+          rc=0
+          for dir in $(find project -name versions.tf -exec dirname {} \; | sort); do
+            echo "::group::${dir}"
+            # --chdir resolves .tflint.hcl relative to the module dir, so pass the root config explicitly
+            tflint --config "${PWD}/.tflint.hcl" --chdir "$dir" || rc=1
+            echo "::endgroup::"
+          done
+          exit $rc
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: project/
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivyignores: .trivyignore
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install terraform-docs
+        run: |
+          set -euo pipefail
+          curl -sSL "https://github.com/terraform-docs/terraform-docs/releases/download/${TERRAFORM_DOCS_VERSION}/terraform-docs-${TERRAFORM_DOCS_VERSION}-linux-amd64.tar.gz" \
+            | tar xz -C /usr/local/bin terraform-docs
+
+      - name: terraform-docs --output-check
+        run: |
+          set -uo pipefail
+          rc=0
+          for dir in $(find project -name versions.tf -exec dirname {} \; | sort); do
+            echo "::group::${dir}"
+            terraform-docs -c .terraform-docs.yml --output-check "$dir" || rc=1
+            echo "::endgroup::"
+          done
+          exit $rc

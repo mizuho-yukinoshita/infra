@@ -239,7 +239,7 @@ variable "is_route53_zone_private" {
 }
 
 variable "route53_record_name" {
-  description = "Route 53のレコード名。指定しない場合は\${system_name}-\${env}-db"
+  description = "Route 53のレコード名。指定しない場合は$${system_name}-$${env}-db"
   type        = string
   default     = null
 }

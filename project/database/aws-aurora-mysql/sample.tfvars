@@ -22,9 +22,9 @@ storage_encrypted = true
 # kms_key_id = "arn:aws:kms:ap-northeast-1:123456789012:key/xxxxxxxx"
 
 # 削除保護（prodでは true / skip_final_snapshot = false を推奨）
-deletion_protection       = true
-skip_final_snapshot       = true
-delete_automated_backups  = true
+deletion_protection      = true
+skip_final_snapshot      = true
+delete_automated_backups = true
 # skip_final_snapshot = false の場合は必須
 # final_snapshot_identifier = "app-dev-aurora-final-snapshot"
 

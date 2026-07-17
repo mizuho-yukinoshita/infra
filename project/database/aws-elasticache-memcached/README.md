@@ -19,21 +19,32 @@ key = "database/aws-elasticache-memcached/${ENV}/terraform.tfstate"
 
 ## 変数一覧
 
-| 変数名 | 型 | デフォルト | 説明 |
-| --- | --- | --- | --- |
-| `system_name` | string | - | システム名 |
-| `env` | string | - | 環境名 (dev / stg / prod) |
-| `region` | string | `ap-northeast-1` | AWS リージョン |
-| `default_tags` | map(string) | `{}` | 固定タグにマージする追加タグ |
-| `subnet_ids` | list(string) | - | 配置先サブネット ID（プライベートサブネット必須） |
-| `security_group_ids` | list(string) | - | 適用するセキュリティグループ ID |
-| `engine_version` | string | `1.6.22` | エンジンバージョン |
-| `node_type` | string | `cache.t4g.micro` | ノードのインスタンスタイプ |
-| `parameter_group_name` | string | `default.memcached1.6` | パラメータグループ名 |
-| `num_cache_nodes` | number | `1` | ノード数（各ノードは独立、データは分散配置） |
-| `az_mode` | string | `single-az` | AZ 配置モード。`num_cache_nodes > 1` の場合は `cross-az` を推奨 |
-| `transit_encryption_enabled` | bool | `true` | 転送中の暗号化 (TLS)。Memcached 1.6.12 以降が前提 |
-| `maintenance_window` | string | `sun:18:00-sun:19:00` | メンテナンスウィンドウ (UTC) |
+<!-- BEGIN_TF_DOCS -->
+### Inputs
+
+| Name | Description | Type | Default | Required |
+| ---- | ----------- | ---- | ------- | :------: |
+| env | 環境名 (dev, stg, prod) | `string` | n/a | yes |
+| security\_group\_ids | 適用するセキュリティグループIDのリスト (プライベートサブネット内からのアクセスのみ許可すること) | `list(string)` | n/a | yes |
+| subnet\_ids | ElastiCacheを配置するサブネットIDのリスト (プライベートサブネット必須) | `list(string)` | n/a | yes |
+| system\_name | システム名 | `string` | n/a | yes |
+| az\_mode | AZ配置モード (single-az / cross-az)。num\_cache\_nodes > 1 の場合は cross-az を推奨 | `string` | `"single-az"` | no |
+| default\_tags | 全リソースに付与する追加タグ (固定タグにマージされる) | `map(string)` | `{}` | no |
+| engine\_version | Memcachedエンジンのバージョン | `string` | `"1.6.22"` | no |
+| maintenance\_window | メンテナンスウィンドウ (UTC)。例: sun:18:00-sun:19:00 (JST 月曜 3:00-4:00) | `string` | `"sun:18:00-sun:19:00"` | no |
+| node\_type | キャッシュノードのインスタンスタイプ | `string` | `"cache.t4g.micro"` | no |
+| num\_cache\_nodes | クラスター内に作成するMemcachedノードの数 | `number` | `1` | no |
+| parameter\_group\_name | 適用するパラメータグループ名 | `string` | `"default.memcached1.6"` | no |
+| region | AWSリージョン | `string` | `"ap-northeast-1"` | no |
+| transit\_encryption\_enabled | 転送中の暗号化 (TLS) を有効にするか (Memcached 1.6.12 以降が前提) | `bool` | `true` | no |
+
+### Outputs
+
+| Name | Description |
+| ---- | ----------- |
+| memcached\_cluster\_address | Memcachedのクラスターエンドポイント |
+| memcached\_configuration\_endpoint | Memcachedの設定エンドポイント |
+<!-- END_TF_DOCS -->
 
 ## tfvars の運用
 
