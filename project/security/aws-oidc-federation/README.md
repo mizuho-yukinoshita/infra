@@ -52,7 +52,7 @@ AWS の assume role policy（信頼ポリシー）はロール本体と不可分
    output `required_trust_policies` で提供する。
 2. **ロールの所有側**でこの JSON を信頼ポリシーに設定（マージ）してもらう必要がある。設定される
    まで OIDC からの AssumeRole は失敗する。
-3. `managed_policy_arns` / `inline_policy_json` のアタッチは既存ロールに対しても本テンプレートが
+3. `managed_policy_arns` / `inline_policy` のアタッチは既存ロールに対しても本テンプレートが
    実施する。
 
 ## GitHub Actions 側の組み込み例
@@ -93,7 +93,7 @@ jobs:
 | create\_oidc\_provider | IAM OIDC プロバイダを作成するか。AWSアカウント×URL につき1つしか作れないため、既存がある場合は false にして参照する | `bool` | `true` | no |
 | default\_tags | 全AWSリソースに付与する追加タグ | `map(string)` | `{}` | no |
 | region | AWSリージョン | `string` | `"ap-northeast-1"` | no |
-| roles | 外部 OIDC IdP に AssumeRoleWithWebIdentity を許可する IAM ロールの定義。キーはロールの識別子 (create\_role = true の場合、ロール名は <system\_name>-<env>-<キー> になる) | <pre>map(object({<br/>    subject_conditions = list(object({<br/>      test   = string<br/>      values = list(string)<br/>    }))<br/>    audience = optional(list(string))<br/>    additional_conditions = optional(list(object({<br/>      test     = string<br/>      variable = string<br/>      values   = list(string)<br/>    })), [])<br/>    create_role          = optional(bool, true)<br/>    existing_role_name   = optional(string)<br/>    managed_policy_arns  = optional(list(string), [])<br/>    inline_policy_json   = optional(string)<br/>    max_session_duration = optional(number, 3600)<br/>  }))</pre> | `{}` | no |
+| roles | 外部 OIDC IdP に AssumeRoleWithWebIdentity を許可する IAM ロールの定義。キーはロールの識別子 (create\_role = true の場合、ロール名は <system\_name>-<env>-<キー> になる) | <pre>map(object({<br/>    subject_conditions = list(object({<br/>      test   = string<br/>      values = list(string)<br/>    }))<br/>    audience = optional(list(string))<br/>    additional_conditions = optional(list(object({<br/>      test     = string<br/>      variable = string<br/>      values   = list(string)<br/>    })), [])<br/>    create_role          = optional(bool, true)<br/>    existing_role_name   = optional(string)<br/>    managed_policy_arns  = optional(list(string), [])<br/>    inline_policy        = optional(any)<br/>    max_session_duration = optional(number, 3600)<br/>  }))</pre> | `{}` | no |
 | thumbprint\_list | OIDC プロバイダの TLS サーバー証明書の thumbprint リスト。null の場合は指定しない (AWS provider が自動取得する) | `list(string)` | `null` | no |
 
 ### Outputs
@@ -117,7 +117,7 @@ jobs:
 | `create_role` | ロールを新規作成するか。false なら既存ロールを参照 | `true` |
 | `existing_role_name` | 既存ロール名（`create_role = false` のとき必須） | `null` |
 | `managed_policy_arns` | アタッチするマネージドポリシー ARN のリスト | `[]` |
-| `inline_policy_json` | アタッチするインラインポリシー JSON | `null` |
+| `inline_policy` | アタッチするインラインポリシー（HCL オブジェクトで記述。モジュールが JSON へ変換する） | `null` |
 | `max_session_duration` | 最大セッション時間（秒、`create_role = true` のみ有効） | `3600` |
 
 ## dev / prod の作り分け方針

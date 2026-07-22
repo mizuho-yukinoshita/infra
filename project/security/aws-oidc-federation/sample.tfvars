@@ -26,8 +26,15 @@ roles = {
       { test = "StringLike", values = ["repo:<owner>/<repo>:pull_request"] }
     ]
     managed_policy_arns = ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
-    # state 用の追加権限が必要なら inline_policy_json で S3/DynamoDB を絞って付与する
-    # inline_policy_json = jsonencode({ ... })
+    # state 用の追加権限が必要なら inline_policy で S3/DynamoDB を絞って付与する
+    # (HCL オブジェクトで記述。モジュールが JSON へ変換する)
+    # inline_policy = {
+    #   Version = "2012-10-17"
+    #   Statement = [
+    #     { Effect = "Allow", Action = ["s3:ListBucket"], Resource = "arn:aws:s3:::example-bucket" },
+    #     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = "arn:aws:s3:::example-bucket/*" }
+    #   ]
+    # }
   }
 
   # apply: 書き込み相当。main ブランチへの push のみに絞る
@@ -43,7 +50,7 @@ roles = {
   }
 
   # 既存ロールにバインドする例 (信頼ポリシーは output required_trust_policies の JSON を
-  # ロール所有側で設定する。managed_policy_arns / inline_policy_json は本テンプレートが付与)
+  # ロール所有側で設定する。managed_policy_arns / inline_policy は本テンプレートが付与)
   # "existing" = {
   #   subject_conditions = [
   #     { test = "StringEquals", values = ["repo:<owner>/<repo>:ref:refs/heads/main"] }

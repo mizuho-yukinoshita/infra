@@ -129,9 +129,9 @@ resource "aws_iam_role_policy_attachment" "federated" {
 }
 
 resource "aws_iam_role_policy" "federated" {
-  for_each = { for k, v in var.roles : k => v if v.inline_policy_json != null }
+  for_each = { for k, v in var.roles : k => v if v.inline_policy != null }
 
   name   = "${var.system_name}-${var.env}-${each.key}"
   role   = local.role_names[each.key]
-  policy = each.value.inline_policy_json
+  policy = jsonencode(each.value.inline_policy)
 }
